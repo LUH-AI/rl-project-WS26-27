@@ -1,0 +1,28 @@
+[project]
+name = "go2-rl"
+version = "0.1.0"
+description = "Sim2real RL pipeline for Unitree Go2 EDU"
+readme = "PLAN.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    # Isaac Sim + Isaac Lab, installed from NVIDIA's pip index rather than
+    # PyPI (see scripts/install_isaaclab.sh — needs `--extra-index-url
+    # https://pypi.nvidia.com`, which `uv add` can't express well here, so
+    # it's a plain `uv pip install` outside the normal `uv sync` path).
+    # This single extra also pins and pulls in the versions actually used:
+    # torch==2.7.0+cu126, torchvision==0.22.0, rsl-rl-lib==3.0.1,
+    # gymnasium==1.2.0, tensorboard==2.21.0, numpy==1.26.4.
+    #
+    # isaaclab[isaacsim,all]==2.3.2.post1
+]
+
+[project.optional-dependencies]
+deploy = [
+    # Real-robot / Jetson Orin NX control loop (command_bus/, deploy/).
+    # Not needed for sim training, kept as an optional group.
+    "unitree_sdk2py",
+    "onnxruntime-gpu",
+]
+
+[tool.uv]
+package = false

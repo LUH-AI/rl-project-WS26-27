@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+outputs/
+logs/
+runs/
+*.onnx
+.isaac-sim/
+third_party/
