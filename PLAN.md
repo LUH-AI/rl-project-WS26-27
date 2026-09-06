@@ -124,10 +124,65 @@ required part of Stage 1, not an optional extra.
   commands — this is the same bus Stage 2 adds a second source to, not
   something Stage 2 replaces.
 
+### Status (as of 2026-09-06)
+
+**Local (RTX 4090), Isaac Lab — working end-to-end.** `third_party/unitree_rl_lab`
+(Isaac Lab 2.3.2.post1 / Isaac Sim 5.1) trains, plots, and renders (MuJoCo-replay,
+since native `--video` capture reliably crashes Isaac Sim) a flat-ground Go2
+velocity-tracking policy. Two task variants exist: the original full design
+(rough-terrain curriculum, `joint_vel_rel` obs, many reward terms) and a
+flat-terrain `Unitree-Go2-Velocity-MJX-Matched` variant built to compare
+directly against the MJX pipeline below.
+
+**Cluster (LUIS), Isaac Lab — blocked, not a software problem.** Isaac Lab
+2.1.0 / Isaac Sim 4.5.0 was successfully pinned and installed on the cluster's
+Rocky Linux 9 (glibc 2.34) environment, but the `ai` partition's A100s are
+MIG-partitioned, and MIG instances have no Vulkan/OpenGL/graphics-engine
+access — confirmed via NVIDIA's own docs and forum posts, and reproduced
+directly (Kit renderer fails to initialize). This is a GPU-wide hardware/driver
+limitation, not fixable via packaging (venv/Apptainer/Docker all hit the same
+wall). NVIDIA MPS was investigated as a possible workaround and **ruled out**:
+it's a CUDA-compute-only sharing daemon with the same no-graphics limitation
+as MIG, not a fix. The only real fix would be a non-MIG, whole-GPU allocation
+(as Isaac Lab's own cluster-deployment examples assume) — worth a small,
+easily-verifiable ask to cluster admins, but not yet pursued.
+
+**Cluster-compatible alternative: MJX/JAX (`third_party/unitree_go2_mjx_rl`).**
+Pure-CUDA-compute (no renderer), so it trains fine on the `ai` partition's
+MIG slices — validated with a real SLURM run (train → plot → MuJoCo-rendered
+animation, all produced on the cluster). Findings so far:
+- Native MJX policy (`joystick_basic.yaml`) trains but plateaus in a
+  "stand still" local optimum rather than real locomotion — reproducible
+  both locally and on the cluster.
+- A JAX→PyTorch ported policy evaluated *inside* Isaac Lab tracks
+  reasonably (lin/ang vel error 0.81/0.49, ~83% survival) but is clearly
+  worse than a policy of the same design retrained natively in Isaac Lab
+  (0.21/0.22 error, full survival) — a real, measured sim2sim gap.
+- Attempted to close that gap by matching MJX's env/reward/obs/PPO
+  hyperparameters to Isaac Lab as closely as possible
+  (`configs/joystick_isaaclab_matched.yaml`,
+  `JoystickIsaacLabMatchedEnvConfig`, `ActorCriticIdentityNetworks` for an
+  unbounded Gaussian action distribution matching rsl_rl). Result:
+  inconclusive — the stand-still plateau wasn't fixed, and this run
+  diverged to NaN at the very last eval step. Not yet root-caused (open
+  question: unbounded action distribution vs. the more aggressive
+  LR/gamma taken from Isaac Lab).
+- The two Go2 assets (Isaac Lab's URDF-derived asset vs. MJX's MJCF) do
+  **not** share a default-pose/joint-angle convention — transplanting
+  Isaac Lab's standing pose into the MJX scene caused immediate falls;
+  MJX keeps its own symmetric keyframe.
+
+Net effect: Isaac Lab (local RTX 4090) remains the primary Stage 1
+simulator/dev loop; MJX is the validated fallback for cluster-scale
+training, not yet at parity with Isaac Lab and with an open stand-still/
+NaN-divergence issue to resolve before relying on it for a real policy.
+
 ### Deliverables / milestones
-- [ ] Isaac Lab env for Go2 with proprioceptive obs + velocity command
-      conditioning, command randomization built in
-- [ ] PPO training run reaching stable flat-ground walking in sim
+- [x] Isaac Lab env for Go2 with proprioceptive obs + velocity command
+      conditioning, command randomization built in (local RTX 4090)
+- [x] PPO training run reaching stable flat-ground walking in sim (local
+      RTX 4090; cluster-scale training only validated so far via the MJX
+      fallback path, not native Isaac Lab — see Status above)
 - [ ] Rough-terrain curriculum added, policy robust to pushes/terrain
       randomization in sim
 - [ ] Actuator network identified from real Go2 motor logs
