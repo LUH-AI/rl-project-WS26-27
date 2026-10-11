@@ -29,6 +29,8 @@ parser.add_argument("--task", type=str, required=True)
 parser.add_argument("--steps", type=int, default=400)
 parser.add_argument("--out", type=str, default="training/outputs/rollout.npz")
 parser.add_argument("--seed", type=int, default=0)
+parser.add_argument("--cmd", type=float, nargs=3, default=None, metavar=("VX", "VY", "WZ"),
+                    help="fix the velocity command (e.g. 0 0 0 to compare with real shadow-mode logs)")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
@@ -61,6 +63,16 @@ def main():
     )
     agent_cfg: RslRlOnPolicyRunnerCfg = cli_args.parse_rsl_rl_cfg(args_cli.task, args_cli)
 
+    if args_cli.cmd is not None:
+        vx, vy, wz = args_cli.cmd
+        cmd_cfg = env_cfg.commands.base_velocity
+        cmd_cfg.rel_standing_envs = 0.0
+        for ranges in (cmd_cfg.ranges, getattr(cmd_cfg, "limit_ranges", None)):
+            if ranges is not None:
+                ranges.lin_vel_x = (vx, vx)
+                ranges.lin_vel_y = (vy, vy)
+                ranges.ang_vel_z = (wz, wz)
+
     log_root_path = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experiment_name))
     resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
     print(f"[INFO] Loading checkpoint from: {resume_path}")
@@ -84,10 +96,15 @@ def main():
     root_pos_log = []
     root_quat_log = []
     command_log = []
+    obs_log = []
+    action_log = []
 
     with torch.inference_mode():
         for _ in range(args_cli.steps):
             actions = policy(obs)
+            policy_obs = obs["policy"] if hasattr(obs, "keys") else obs
+            obs_log.append(policy_obs[0].cpu().numpy().copy())
+            action_log.append(actions[0].cpu().numpy().copy())
             obs, _, _, _ = env.step(actions)
 
             joint_pos_log.append(robot.data.joint_pos[0].cpu().numpy().copy())
@@ -104,6 +121,8 @@ def main():
         root_pos=np.stack(root_pos_log),
         root_quat=np.stack(root_quat_log),
         command=np.stack(command_log),
+        obs=np.stack(obs_log),
+        action=np.stack(action_log),
         dt=env.unwrapped.step_dt,
     )
     print(f"[INFO] Saved {args_cli.steps}-step trajectory to {args_cli.out}")
