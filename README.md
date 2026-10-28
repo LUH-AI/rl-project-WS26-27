@@ -1,10 +1,9 @@
-# Go2 EDU Sim2Real RL Pipeline
+# Go2 VLA Navigation
 
 ## Overview
 
-This repo has two parts: locomotion RL for the Go2 in Isaac Lab (Stage 1, see [PLAN.md](PLAN.md))
-and a VLA that drives the real Go2 from its front camera and a text prompt (Stage 2).
-For Stage 2 we use [OmniVLA](https://github.com/NHirose/OmniVLA) to predict where to walk,
+Drive the real Unitree Go2 with a text prompt like "go to the white door".
+We use [OmniVLA](https://github.com/NHirose/OmniVLA) to predict where to walk from the front camera,
 and Unitree's sport mode controller to move the legs.
 
 ## Installation
@@ -50,7 +49,12 @@ deploy/.venv/bin/python -m deploy.go2_vla_bridge --via sport --duration 5 --max-
 * Each run is logged to `training/outputs/real_vla/`.
 * If the robot is not found, check the cable and `GO2_IFACE`.
 
-## Stage 1 setup (Isaac Lab)
+## Locomotion RL in Isaac Lab
+
+This part is separate from the VLA and still work in progress: we train our own walking policy
+for the Go2 in Isaac Lab, see [PLAN.md](PLAN.md). The VLA above does not use it.
+
+### Setup
 
 Environment is managed with [uv](https://docs.astral.sh/uv/), pinned to
 Python 3.11 (required by Isaac Sim 5.x). Isaac Sim + Isaac Lab are a
