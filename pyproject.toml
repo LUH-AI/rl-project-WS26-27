@@ -2,7 +2,7 @@
 name = "go2-rl"
 version = "0.1.0"
 description = "Sim2real RL pipeline for Unitree Go2 EDU"
-readme = "PLAN.md"
+readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     # Isaac Sim + Isaac Lab, installed from NVIDIA's pip index rather than

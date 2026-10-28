@@ -52,7 +52,7 @@ deploy/.venv/bin/python -m deploy.go2_vla_bridge --via sport --duration 5 --max-
 ## Locomotion RL in Isaac Lab
 
 This part is separate from the VLA and still work in progress: we train our own walking policy
-for the Go2 in Isaac Lab, see [PLAN.md](PLAN.md). The VLA above does not use it.
+for the Go2 in Isaac Lab. The VLA above does not use it.
 
 ### Setup
 
@@ -72,18 +72,12 @@ rsl-rl-lib 3.0.1, gymnasium 1.2.0.
 
 Unitree's own Isaac-Lab-based reference implementation for Go2
 (`unitree_rl_lab`) is the recommended starting point for the env/task
-config referenced in PLAN.md — clone and editable-install it against this
-same `.venv` once Isaac Lab is installed:
+config. Clone and install it into the same `.venv` once Isaac Lab is installed:
 
 ```bash
 git clone https://github.com/unitreerobotics/unitree_rl_lab third_party/unitree_rl_lab
 cd third_party/unitree_rl_lab && ./unitree_rl_lab.sh -i
 ```
-
-(Note: PLAN.md's "Open questions" section mentions `unitree_rl_gym` as the
-Go2 reference — that repo targets the older Isaac Gym / MuJoCo stack.
-Since the plan settled on Isaac Lab as the simulator, `unitree_rl_lab` is
-the actual matching reference repo and is what's linked above.)
 
 ## Layout
 
