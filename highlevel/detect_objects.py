@@ -69,67 +69,74 @@ PALETTE = [
 def iou(a, b) -> float:
     x0, y0 = max(a[0], b[0]), max(a[1], b[1])
     x1, y1 = min(a[2], b[2]), min(a[3], b[3])
-    inter = max(0.0, x1 - x0) * max(0.0, y1 - y0)
+    overlap = max(0.0, x1 - x0) * max(0.0, y1 - y0)
     area_a = (a[2] - a[0]) * (a[3] - a[1])
     area_b = (b[2] - b[0]) * (b[3] - b[1])
-    return inter / (area_a + area_b - inter + 1e-9)
+    return overlap / (area_a + area_b - overlap + 1e-9)
 
 
-def detect(img: Image.Image, queries: list[str], thresh: float) -> list:
+def detect(image: Image.Image, queries: list[str], threshold: float) -> list:
+    """Detect objects as (score, label, box), best first."""
     device = "cuda" if torch.cuda.is_available() else "cpu"
     processor = Owlv2Processor.from_pretrained(MODEL)
     model = Owlv2ForObjectDetection.from_pretrained(MODEL).to(device).eval()
-    inputs = processor(text=[queries], images=img, return_tensors="pt").to(device)
+    inputs = processor(text=[queries], images=image, return_tensors="pt").to(device)
     with torch.no_grad():
         outputs = model(**inputs)
 
     # OWLv2 pads the image to a square
-    side = max(img.size)
-    res = processor.post_process_object_detection(
+    size = max(image.size)
+    results = processor.post_process_object_detection(
         outputs,
-        threshold=thresh,
-        target_sizes=torch.tensor([[side, side]], device=device),
+        threshold=threshold,
+        target_sizes=torch.tensor([[size, size]], device=device),
     )[0]
-    dets = sorted(
+    detections = sorted(
         (
-            (float(s), queries[int(label)], [float(v) for v in box])
-            for s, label, box in zip(res["scores"], res["labels"], res["boxes"])
+            (float(score), queries[int(label)], [float(v) for v in box])
+            for score, label, box in zip(
+                results["scores"], results["labels"], results["boxes"]
+            )
         ),
         reverse=True,
     )
 
     # Keep only the best label per region
-    kept = []
-    for d in dets:
-        if all(iou(d[2], k[2]) < 0.5 for k in kept):
-            kept.append(d)
-    return kept
+    unique = []
+    for detection in detections:
+        if all(iou(detection[2], other[2]) < 0.5 for other in unique):
+            unique.append(detection)
+    return unique
 
 
-def draw_boxes(img: Image.Image, dets: list) -> None:
-    draw = ImageDraw.Draw(img)
+def draw_boxes(image: Image.Image, detections: list) -> None:
+    draw = ImageDraw.Draw(image)
     try:
-        font = ImageFont.truetype("DejaVuSans-Bold.ttf", max(16, img.width // 60))
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", max(16, image.width // 60))
     except OSError:
         font = ImageFont.load_default()
-    for i, (score, label, (x0, y0, x1, y1)) in enumerate(dets):
+    for i, (score, label, (x0, y0, x1, y1)) in enumerate(detections):
         x0, y0 = max(0, x0), max(0, y0)
-        x1, y1 = min(img.width - 1, x1), min(img.height - 1, y1)
+        x1, y1 = min(image.width - 1, x1), min(image.height - 1, y1)
         color = PALETTE[i % len(PALETTE)]
-        draw.rectangle([x0, y0, x1, y1], outline=color, width=max(3, img.width // 400))
+        draw.rectangle(
+            [x0, y0, x1, y1], outline=color, width=max(3, image.width // 400)
+        )
+
+        # Label above the box, or inside if there is no space
         text = f"{label} {score:.2f}"
-        tb = draw.textbbox((x0, y0), text, font=font)
-        h = tb[3] - tb[1]
-        ty = y0 - h - 6 if y0 > h + 6 else y0 + 2
-        draw.rectangle([x0, ty, x0 + (tb[2] - tb[0]) + 8, ty + h + 6], fill=color)
-        draw.text((x0 + 4, ty + 1), text, fill="white", font=font)
+        left, top, right, bottom = draw.textbbox((x0, y0), text, font=font)
+        text_w, text_h = right - left, bottom - top
+        text_y = y0 - text_h - 6 if y0 > text_h + 6 else y0 + 2
+        draw.rectangle([x0, text_y, x0 + text_w + 8, text_y + text_h + 6], fill=color)
+        draw.text((x0 + 4, text_y + 1), text, fill="white", font=font)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("image")
     parser.add_argument("--queries", help="comma separated object names")
-    parser.add_argument("--thresh", type=float, default=0.2)
+    parser.add_argument("--threshold", type=float, default=0.2)
     parser.add_argument(
         "--out",
         default="training/outputs/detections",
@@ -141,27 +148,27 @@ def main() -> None:
     else:
         queries = INDOOR
 
-    img = Image.open(args.image).convert("RGB")
-    dets = detect(img, queries, args.thresh)
-    draw_boxes(img, dets)
+    image = Image.open(args.image).convert("RGB")
+    detections = detect(image, queries, args.threshold)
+    draw_boxes(image, detections)
 
     # Save image
     if args.out.lower().endswith((".jpg", ".jpeg")):
-        out = args.out
+        out_path = args.out
     else:
         name = os.path.splitext(os.path.basename(args.image))[0]
-        out = os.path.join(args.out, name + "_detections.jpg")
-    os.makedirs(os.path.dirname(out) or ".", exist_ok=True)
-    img.save(out, quality=90)
+        out_path = os.path.join(args.out, name + "_detections.jpg")
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
+    image.save(out_path, quality=90)
 
     # Print detections
-    for score, label, (x0, y0, x1, y1) in dets:
-        cx = (x0 + x1) / 2 / img.width
-        side = "left" if cx < 0.4 else "right" if cx > 0.6 else "centre"
+    for score, label, (x0, y0, x1, y1) in detections:
+        center = (x0 + x1) / 2 / image.width
+        side = "left" if center < 0.4 else "right" if center > 0.6 else "centre"
         print(
             f"{score:.2f}  {label:<18} {side:<6} box=({x0:.0f},{y0:.0f},{x1:.0f},{y1:.0f})"
         )
-    print(f"{len(dets)} objects -> {out}")
+    print(f"{len(detections)} objects -> {out_path}")
 
 
 if __name__ == "__main__":

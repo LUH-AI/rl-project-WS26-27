@@ -62,18 +62,18 @@ class CommandArbiter:
         """Get the highest priority fresh command."""
         self._drain()
         now = time.time()
-        fresh = [c for c in self.latest.values() if now - c.stamp <= self.timeout]
+        fresh = [cmd for cmd in self.latest.values() if now - cmd.stamp <= self.timeout]
         if not fresh:
             return VelocityCommand(source="none", stamp=now)
-        return min(fresh, key=lambda c: PRIORITY.get(c.source, 100))
+        return min(fresh, key=lambda cmd: PRIORITY.get(cmd.source, 100))
 
 
 if __name__ == "__main__":
-    arb = CommandArbiter()
+    arbiter = CommandArbiter()
     while True:
-        c = arb.get()
+        cmd = arbiter.get()
         print(
-            f"\r{c.source:>10}  vx={c.vx:+.2f} vy={c.vy:+.2f} wz={c.yaw_rate:+.2f}",
+            f"\r{cmd.source:>10}  vx={cmd.vx:+.2f} vy={cmd.vy:+.2f} wz={cmd.yaw_rate:+.2f}",
             end="",
         )
         time.sleep(0.1)

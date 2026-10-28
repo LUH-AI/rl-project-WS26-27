@@ -11,7 +11,7 @@ from PIL import Image
 
 from highlevel.omnivla_edge_node import (
     OMNIVLA_DIR,
-    WAYPOINT_SPACING,
+    WAYPOINT_SCALE,
     get_parser,
     run_node,
 )
@@ -26,7 +26,7 @@ from prismatic.training.train_utils import (  # noqa: E402
 )
 from prismatic.vla.constants import ACTION_DIM, NUM_ACTIONS_CHUNK  # noqa: E402
 
-LANGUAGE_ONLY = 7
+LANGUAGE_GOAL = 7
 
 
 class OmniVLA7B:
@@ -46,7 +46,7 @@ class OmniVLA7B:
         self.action_head.eval()
         self.pose_projector.eval()
 
-        # We only use this for batch building, goal fields are placeholders
+        # Only used to build the model inputs, so the goal fields stay empty
         self.builder = upstream.Inference(
             save_dir=None,
             lan_inst_prompt=prompt,
@@ -67,21 +67,21 @@ class OmniVLA7B:
     @torch.no_grad()
     def predict(self, frame: Image.Image) -> np.ndarray:
         """Predict 8 waypoints (x, y, cos, sin) in metres."""
-        b = self.builder
-        batch = b.data_transformer_omnivla(
+        builder = self.builder
+        batch = builder.data_transformer_omnivla(
             frame,
             self.prompt,
-            b.goal_image_PIL,
+            builder.goal_image_PIL,
             np.zeros(4),
             prompt_builder=PurePromptBuilder,
-            action_tokenizer=b.action_tokenizer,
-            processor=b.processor,
+            action_tokenizer=builder.action_tokenizer,
+            processor=builder.processor,
         )
         modality = torch.tensor(
-            [LANGUAGE_ONLY], dtype=torch.bfloat16, device=self.device
+            [LANGUAGE_GOAL], dtype=torch.bfloat16, device=self.device
         )
         with torch.autocast("cuda", dtype=torch.bfloat16):
-            out = self.vla(
+            outputs = self.vla(
                 input_ids=batch["input_ids"].to(self.device),
                 attention_mask=batch["attention_mask"].to(self.device),
                 pixel_values=batch["pixel_values"].to(torch.bfloat16).to(self.device),
@@ -96,19 +96,19 @@ class OmniVLA7B:
                 use_film=False,
             )
 
-        # Action head reads the hidden states of the action tokens
-        gt = batch["labels"][:, 1:].to(self.device)
-        mask = get_current_action_mask(gt) | get_next_actions_mask(gt)
-        text_hidden = out.hidden_states[-1][:, self.num_patches : -1]
+        # Get the hidden states of the action tokens
+        labels = batch["labels"][:, 1:].to(self.device)
+        mask = get_current_action_mask(labels) | get_next_actions_mask(labels)
+        text_hidden = outputs.hidden_states[-1][:, self.num_patches : -1]
         action_hidden = (
             text_hidden[mask]
             .reshape(1, NUM_ACTIONS_CHUNK * ACTION_DIM, -1)
             .to(torch.bfloat16)
         )
         actions = self.action_head.predict_action(action_hidden, modality)
-        wps = actions[0].float().cpu().numpy()
-        wps[:, :2] *= WAYPOINT_SPACING
-        return wps
+        waypoints = actions[0].float().cpu().numpy()
+        waypoints[:, :2] *= WAYPOINT_SCALE
+        return waypoints
 
 
 def main() -> None:

@@ -1,90 +1,54 @@
 # Go2 EDU Sim2Real RL Pipeline
 
-See [PLAN.md](PLAN.md) for the full staged plan.
-This repo contains two stages: locomotion RL for the Go2 in Isaac Lab (Stage 1) and a VLA that drives the real Go2 from its camera and a text goal (Stage 2).
-If you want to get the robot walking to a goal, start with Stage 2 below.
+## Overview
 
-## Stage 2: VLA on the real Go2
-We use [OmniVLA](https://github.com/NHirose/OmniVLA) to turn the front camera image and a prompt like "go to the white door" into forward and turning velocities.
-Unitree's own sport mode controller then moves the legs.
-The VLA and the robot SDK run in separate environments and talk to each other over UDP on localhost.
+This repo has two parts: locomotion RL for the Go2 in Isaac Lab (Stage 1, see [PLAN.md](PLAN.md))
+and a VLA that drives the real Go2 from its front camera and a text prompt (Stage 2).
+For Stage 2 we use [OmniVLA](https://github.com/NHirose/OmniVLA) to predict where to walk,
+and Unitree's sport mode controller to move the legs.
 
-You need an NVIDIA GPU with at least 20GB of memory for the 7B model (we use an RTX 4090), about 20GB of disk space and [uv](https://docs.astral.sh/uv/).
-The smaller edge model runs with ~2GB.
+## Installation
 
-### Installation
-Install the VLA environment with the OmniVLA checkpoints and the robot environment with the Unitree SDK:
-
+The VLA needs an NVIDIA GPU with at least 20GB of memory for the 7B model (~2GB for the edge model)
+and [uv](https://docs.astral.sh/uv/). To install the VLA and robot environments, simply run:
 ```bash
-./scripts/install_vla.sh --full
+./scripts/install_vla.sh --full   # without --full, only the edge model is downloaded
 ./scripts/install_deploy.sh
 ```
 
-Without `--full` you only get the edge model, which skips the 16GB download of the 7B checkpoint.
-
-### Connect to the Robot
-Connect the robot to your PC via Ethernet and give the interface an IP in the robot's subnet.
-You can find the interface name with `ip -br link`:
-
+Connect the robot via Ethernet and give the interface (see `ip -br link`) an IP in the robot's subnet:
 ```bash
 export GO2_IFACE=enxf8e43b9f046a
 sudo ip addr add 192.168.123.51/24 dev $GO2_IFACE
-ping -c 3 192.168.123.161
+ping 192.168.123.161
 ```
 
-All scripts read the interface from `GO2_IFACE`, alternatively you can pass `--iface`.
+## Usage
 
-### See What the Robot Sees
-Before picking a goal, it's useful to check what the robot can actually see:
-
+The VLA and the bridge to the robot run in two terminals.
+Here are the commands for a full run:
 ```bash
+# Check what the robot sees, saves a labelled image to training/outputs/frames/view.jpg
 ./scripts/look.sh
-```
-
-This saves the camera image with labelled objects to `training/outputs/frames/view.jpg` and prints the detections.
-You can also look for specific objects with `--queries "white door,trash bin"`.
-The robot doesn't move during this.
-
-### Run the VLA
-Start the VLA in one terminal and wait until it prints `OmniVLA 7B on cuda:0`:
-
-```bash
+# Terminal 1: start the VLA, type a new prompt and press Enter to change the goal
 highlevel/.venv/bin/python -m highlevel.omnivla_7b_node --prompt "go to the white door" --max-v 0.5 --max-w 0.5
-```
-
-The edge model works the same way with `highlevel.omnivla_edge_node`, but it mostly ignores the prompt.
-To change the goal, simply type a new prompt into this terminal and press Enter.
-You can keep the VLA running between runs.
-
-Then start the bridge to the robot in a second terminal.
-We recommend a dry run first, this runs everything but doesn't send commands to the robot:
-
-```bash
+# Terminal 2: dry run, the robot does not move
 deploy/.venv/bin/python -m deploy.go2_vla_bridge --via sport --duration 5 --max-v 0.5 --min-v 0.35
-```
-
-If the commands look reasonable, add `--live` to let the robot walk:
-
-```bash
+# Terminal 2: live run, the robot walks for 5 seconds
 deploy/.venv/bin/python -m deploy.go2_vla_bridge --via sport --duration 5 --max-v 0.5 --min-v 0.35 --live
 ```
 
-Make sure the robot is standing in sport mode, the floor in front is clear and someone holds the remote.
-The robot stops after `--duration` seconds, on Ctrl-C or if the VLA stops sending commands.
-Each run is logged to `training/outputs/real_vla/`.
-Keep `--min-v` around 0.35, the Go2 stalls at lower speeds.
-For all other options, call the scripts with `--help`.
+> [!WARNING]
+> The VLA does not stop at the goal or avoid obstacles. Keep the floor clear and the remote in hand.
 
-### Limitations
-The VLA only walks forward and steers, it can't go backwards or sideways and always asks for full speed.
-It works best with distinct objects like doors and does not understand motion commands like "turn left".
-It also doesn't stop at the goal or avoid obstacles, so stay close to the robot!
+## Tips
 
-### Troubleshooting
-- `does not match an available interface`: the cable is unplugged, the robot is off or `GO2_IFACE` is wrong.
-- `Sport mode is off`: stand the robot up with the remote or the app first.
-- The robot shuffles and stops: increase `--min-v`.
-- The 7B model fails on import with protobuf errors: rerun `./scripts/install_vla.sh`.
+* Pick prompts with objects that `look.sh` finds. Distinct objects like doors work best,
+  motion commands like "turn left" don't.
+* Keep `--min-v` around 0.35, the Go2 stalls at lower speeds.
+* `highlevel.omnivla_edge_node` is faster than the 7B model but mostly ignores the prompt.
+* Each run is logged to `training/outputs/real_vla/`.
+* If the robot is not found, check the cable and `GO2_IFACE`.
 
 ## Stage 1 setup (Isaac Lab)
 

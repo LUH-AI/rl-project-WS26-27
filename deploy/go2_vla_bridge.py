@@ -28,32 +28,73 @@ CONTROL_HZ = 20
 CAMERA_HZ = 10
 
 
-def camera_loop(
-    video: VideoClient,
-    frames: FramePublisher,
-    stop: threading.Event,
-    stats: dict,
-    save_dir: str | None,
-) -> None:
-    while not stop.is_set():
-        t0 = time.time()
-        try:
-            code, data = video.GetImageSample()
-            if code != 0 or not data:
-                raise RuntimeError(f"GetImageSample code={code}")
-            img = Image.open(io.BytesIO(bytes(data))).convert("RGB")
-            frames.send(img)
-            stats["frames"] += 1
-            stats["last_frame"] = time.time()
+class RobotState:
+    """Keeps the latest sport mode state of the robot."""
 
-            # Save about one frame per second
-            if save_dir and stats["frames"] % CAMERA_HZ == 0:
-                path = os.path.join(save_dir, f"{stats['frames']:05d}.jpg")
-                img.resize((480, 270)).save(path)
-        except Exception as e:
-            stats["cam_errors"] += 1
-            stats["last_error"] = repr(e)
-        time.sleep(max(0.0, 1 / CAMERA_HZ - (time.time() - t0)))
+    def __init__(self):
+        self.state = None
+        self.subscriber = ChannelSubscriber("rt/sportmodestate", SportModeState_)
+        self.subscriber.Init(self.update, 10)
+
+    def update(self, msg: SportModeState_) -> None:
+        self.state = msg
+
+    def to_dict(self) -> dict:
+        if self.state is None:
+            return {}
+        return {
+            "x": round(self.state.position[0], 3),
+            "y": round(self.state.position[1], 3),
+            "yaw": round(self.state.imu_state.rpy[2], 3),
+            "vx_measured": round(self.state.velocity[0], 3),
+            "wz_measured": round(self.state.yaw_speed, 3),
+            "mode": self.state.mode,
+        }
+
+
+class CameraStream:
+    """Sends robot camera frames to the VLA in the background."""
+
+    def __init__(self, save_dir: str):
+        self.video = VideoClient()
+        self.video.SetTimeout(3.0)
+        self.video.Init()
+        self.frames = FramePublisher()
+        self.save_dir = save_dir
+        self.num_frames = 0
+        self.num_errors = 0
+        self.last_frame_time = time.time()
+        self.last_error = ""
+        self.running = threading.Event()
+        self.thread = threading.Thread(target=self.run, daemon=True)
+
+    def start(self) -> None:
+        self.running.set()
+        self.thread.start()
+
+    def stop(self) -> None:
+        self.running.clear()
+
+    def run(self) -> None:
+        while self.running.is_set():
+            step_start = time.time()
+            try:
+                code, data = self.video.GetImageSample()
+                if code != 0 or not data:
+                    raise RuntimeError(f"GetImageSample code={code}")
+                image = Image.open(io.BytesIO(bytes(data))).convert("RGB")
+                self.frames.send(image)
+                self.num_frames += 1
+                self.last_frame_time = time.time()
+
+                # Save about one frame per second
+                if self.num_frames % CAMERA_HZ == 0:
+                    path = os.path.join(self.save_dir, f"{self.num_frames:05d}.jpg")
+                    image.resize((480, 270)).save(path)
+            except Exception as e:
+                self.num_errors += 1
+                self.last_error = repr(e)
+            time.sleep(max(0.0, 1 / CAMERA_HZ - (time.time() - step_start)))
 
 
 def get_parser() -> argparse.ArgumentParser:
@@ -95,31 +136,27 @@ def main() -> None:
     run_name = time.strftime("%Y%m%d-%H%M%S") + ("-live" if args.live else "-dry")
     run_dir = os.path.join(args.log, run_name)
     os.makedirs(os.path.join(run_dir, "frames"), exist_ok=True)
-    cmd_log = open(os.path.join(run_dir, "commands.jsonl"), "w")
+    log_file = open(os.path.join(run_dir, "commands.jsonl"), "w")
 
     # Connect to robot
     ChannelFactoryInitialize(0, args.iface)
-    robot = {}
-    state_sub = ChannelSubscriber("rt/sportmodestate", SportModeState_)
-    state_sub.Init(lambda m: robot.update(state=m), 10)
-    video = VideoClient()
-    video.SetTimeout(3.0)
-    video.Init()
+    robot = RobotState()
+    camera = CameraStream(os.path.join(run_dir, "frames"))
     sport = SportClient()
     sport.SetTimeout(10.0)
     sport.Init()
 
     if args.live:
-        msc = MotionSwitcherClient()
-        msc.SetTimeout(5.0)
-        msc.Init()
-        _, mode = msc.CheckMode()
+        motion_switcher = MotionSwitcherClient()
+        motion_switcher.SetTimeout(5.0)
+        motion_switcher.Init()
+        _, mode = motion_switcher.CheckMode()
         if not mode.get("name"):
-            raise SystemExit("Sport mode is off, select 'mcf' and stand the robot up.")
-        print("BalanceStand ->", sport.BalanceStand())
+            raise SystemExit("Sport mode is off, stand the robot up first.")
+        sport.BalanceStand()
         time.sleep(1.0)
         if args.block_remote:
-            print("SwitchJoystick(False) ->", sport.SwitchJoystick(False))
+            sport.SwitchJoystick(False)
 
     # With obstacle avoidance on, plain Move() gets overridden by the remote
     # after a few seconds, so we move through the avoidance service instead
@@ -131,120 +168,92 @@ def main() -> None:
         while not avoid.SwitchGet()[1]:
             avoid.SwitchSet(True)
             time.sleep(0.1)
-        print("UseRemoteCommandFromApi(True) ->", avoid.UseRemoteCommandFromApi(True))
+        avoid.UseRemoteCommandFromApi(True)
     move = avoid.Move if avoid else sport.Move
 
-    def stop_move() -> None:
+    def stop_robot() -> None:
         move(0.0, 0.0, 0.0)
         if not avoid:
             sport.StopMove()
 
-    # Start camera stream
-    frames = FramePublisher()
     arbiter = CommandArbiter()
-    stop = threading.Event()
-    stats = {"frames": 0, "cam_errors": 0, "last_frame": time.time(), "last_error": ""}
-    cam = threading.Thread(
-        target=camera_loop,
-        args=(video, frames, stop, stats, os.path.join(run_dir, "frames")),
-        daemon=True,
-    )
-    cam.start()
+    camera.start()
+    mode_name = f"LIVE via {args.via}" if args.live else "DRY RUN"
+    print(f"{mode_name} for {args.duration:.0f}s, logging to {run_dir}", flush=True)
 
-    mode_str = f"LIVE via {args.via}" if args.live else "DRY RUN"
-    print(
-        f"{mode_str}: {args.duration:.0f}s, max_v={args.max_v} max_w={args.max_w}, "
-        f"log -> {run_dir}",
-        flush=True,
-    )
-    t0 = nxt = last_print = time.time()
+    start = next_step = last_print = time.time()
     moving = False
     try:
-        while time.time() - t0 < args.duration:
+        while time.time() - start < args.duration:
             # Clip command
-            c = arbiter.get()
-            vx = min(max(c.vx, 0.0), args.max_v)
+            cmd = arbiter.get()
+            vx = min(max(cmd.vx, 0.0), args.max_v)
             if 0.0 < vx < args.min_v:
                 vx = min(args.min_v, args.max_v)
-            wz = min(max(c.yaw_rate, -args.max_w), args.max_w)
-            active = c.source != "none"
+            wz = min(max(cmd.yaw_rate, -args.max_w), args.max_w)
+            has_command = cmd.source != "none"
 
             # Send command, stop once if the VLA goes quiet
             if args.live:
-                if active:
+                if has_command:
                     move(vx, 0.0, wz)
                     moving = True
                 elif moving:
-                    stop_move()
+                    stop_robot()
                     moving = False
 
             # Log command and robot state
             now = time.time()
-            rs = robot.get("state")
-            meas = {}
-            if rs is not None:
-                meas = {
-                    "x": round(rs.position[0], 3),
-                    "y": round(rs.position[1], 3),
-                    "yaw": round(rs.imu_state.rpy[2], 3),
-                    "vx_meas": round(rs.velocity[0], 3),
-                    "wz_meas": round(rs.yaw_speed, 3),
-                    "mode": rs.mode,
-                }
+            measured = robot.to_dict()
             entry = {
-                "t": round(now - t0, 3),
-                "source": c.source,
+                "t": round(now - start, 3),
+                "source": cmd.source,
                 "vx": round(vx, 3),
                 "wz": round(wz, 3),
-                "sent": args.live and active,
-                **meas,
+                "sent": args.live and has_command,
+                **measured,
             }
-            cmd_log.write(json.dumps(entry) + "\n")
+            log_file.write(json.dumps(entry) + "\n")
 
             # Print status
             if now - last_print > 1.0:
                 last_print = now
-                line = (
-                    f"t={now - t0:5.1f}s frames={stats['frames']} "
-                    f"cam_err={stats['cam_errors']} src={c.source:>9} "
+                status = (
+                    f"t={now - start:5.1f}s frames={camera.num_frames} "
+                    f"cam_err={camera.num_errors} src={cmd.source:>9} "
                     f"vx={vx:+.2f} wz={wz:+.2f}"
                 )
                 if not args.live:
-                    line += "  (not sent)"
-                if meas:
-                    line += (
-                        f" | robot x={meas['x']:+.2f} y={meas['y']:+.2f} "
-                        f"v={meas['vx_meas']:+.2f} mode={meas['mode']}"
+                    status += "  (not sent)"
+                if measured:
+                    status += (
+                        f" | robot x={measured['x']:+.2f} y={measured['y']:+.2f} "
+                        f"v={measured['vx_measured']:+.2f}"
                     )
-                else:
-                    line += " | no robot state"
-                print(line, flush=True)
-                if now - stats["last_frame"] > 1.0:
+                print(status, flush=True)
+                if now - camera.last_frame_time > 1.0:
                     print(
-                        f"  Warning: no camera frame for {now - stats['last_frame']:.1f}s "
-                        f"(last error: {stats['last_error'] or 'none'})",
+                        f"Warning: no camera frame for {now - camera.last_frame_time:.1f}s"
+                        f" ({camera.last_error or 'no error'})",
                         flush=True,
                     )
 
-            nxt += 1 / CONTROL_HZ
-            time.sleep(max(0.0, nxt - time.time()))
+            next_step += 1 / CONTROL_HZ
+            time.sleep(max(0.0, next_step - time.time()))
     except KeyboardInterrupt:
-        print("Ctrl-C")
+        print("Interrupted.")
     finally:
-        stop.set()
+        camera.stop()
         if args.live:
-            stop_move()
+            stop_robot()
             if avoid:
                 time.sleep(0.2)
-                print(
-                    "UseRemoteCommandFromApi(False) ->",
-                    avoid.UseRemoteCommandFromApi(False),
-                )
+                avoid.UseRemoteCommandFromApi(False)
             if args.block_remote:
-                print("SwitchJoystick(True) ->", sport.SwitchJoystick(True))
-            print("Stopped.")
-        cmd_log.close()
-        print(f"Done: {stats['frames']} frames sent, log in {run_dir}")
+                sport.SwitchJoystick(True)
+            print("Robot stopped.")
+        log_file.close()
+        print(f"Done! Sent {camera.num_frames} frames, log in {run_dir}")
 
 
 if __name__ == "__main__":
