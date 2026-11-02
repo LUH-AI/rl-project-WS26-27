@@ -1,6 +1,8 @@
 # command_bus/
 
-The command topic definition (`vx, vy, yaw-rate`) shared by RC and, later,
-the Stage 2 high-level model, plus the RC driver, arbitration (RC always
-wins), and the safety supervisor handling e-stop/stand/sit/autonomy-toggle
-outside the learned policy.
+Local UDP messages between the venvs (JSON and JPEG only, no pickle, Python 3.10 compatible).
+
+| File | Port | Content |
+|------|------|---------|
+| `bus.py` | 15555 | Velocity commands `(vx, vy, yaw_rate, source)` from the VLA. Older than 0.5 s counts as stop |
+| `frames.py` | 15556 | Front camera frames (224×224 JPEG) from `deploy/vla_bridge.py` to the VLA |

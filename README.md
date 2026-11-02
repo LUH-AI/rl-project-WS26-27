@@ -1,130 +1,71 @@
 # Go2 VLA Navigation
 
-## Overview
-
 Drive the real Unitree Go2 with a text prompt like "go to the white door".
-We use [OmniVLA](https://github.com/NHirose/OmniVLA) to predict where to walk from the front camera,
-and Unitree's sport mode controller to move the legs.
+[OmniVLA](https://github.com/NHirose/OmniVLA) picks the walking direction from the front camera,
+and either our Isaac Lab RL policy or Unitree's sport mode moves the legs.
 
-## Installation
+## Setup
 
-The VLA needs an NVIDIA GPU with at least 20GB of memory for the 7B model (~2GB for the edge model)
-and [uv](https://docs.astral.sh/uv/). To install the VLA and robot environments, simply run:
+Hardware: a Go2 EDU with its remote, and a workstation with an NVIDIA GPU (≥20 GB for the 7B VLA),
+connected to the robot by Ethernet.
+
+Software: three [uv](https://docs.astral.sh/uv/) venvs, kept separate because their dependencies clash.
+They exchange policies as `.npz` files and commands/camera frames over local UDP (`command_bus/`).
 ```bash
-./scripts/install_vla.sh --full   # without --full, only the edge model is downloaded
-./scripts/install_deploy.sh
+./scripts/install_deploy.sh        # deploy/.venv: talks to the robot (unitree_sdk2_python)
+./scripts/install_vla.sh --full    # vla/.venv: OmniVLA (without --full only the edge model)
+./scripts/install_isaaclab.sh      # .venv: Isaac Lab + unitree_rl_lab, only for training
 ```
 
-Connect the robot via Ethernet and give the interface (see `ip -br link`) an IP in the robot's subnet:
+Network:
 ```bash
-export GO2_IFACE=enxf8e43b9f046a
+export GO2_IFACE=enxf8e43b9f046a   # see ip -br link
 sudo ip addr add 192.168.123.51/24 dev $GO2_IFACE
 ping 192.168.123.161
 ```
 
-## Usage
+## 1. Test low-level commands
 
-The VLA and the bridge to the robot run in two terminals.
-Here are the commands for a full run:
 ```bash
-# Check what the robot sees, saves a labelled image to training/outputs/frames/view.jpg
-./scripts/look.sh
-# Terminal 1: start the VLA, type a new prompt and press Enter to change the goal
-highlevel/.venv/bin/python -m highlevel.omnivla_7b_node --prompt "go to the white door" --max-v 0.5 --max-w 0.5
-# Terminal 2: dry run, the robot does not move
-deploy/.venv/bin/python -m deploy.go2_vla_bridge --via sport --duration 5 --max-v 0.5 --min-v 0.35
-# Terminal 2: live run, the robot walks for 5 seconds
-deploy/.venv/bin/python -m deploy.go2_vla_bridge --via sport --duration 5 --max-v 0.5 --min-v 0.35 --live
+# read only: IMU, battery, joints
+deploy/.venv/bin/python deploy/read_lowstate.py $GO2_IFACE
+# robot lying down: releases sport mode, stands up and lies down again, Ctrl+C at the end
+deploy/.venv/bin/python third_party/unitree_sdk2_python/example/go2/low_level/go2_stand_example.py $GO2_IFACE
+```
+Sport mode stays off until the robot reboots. The full bring-up log is in [deploy/real_robot_setup.md](deploy/real_robot_setup.md).
+
+## 2. Train an RL policy
+
+Optional, the trained standard and crawl policies are in `deploy/example_policies/`. From `third_party/unitree_rl_lab` with `.venv` active (~25 min on an RTX 4090):
+```bash
+python scripts/rsl_rl/train.py --task Unitree-Go2-Velocity --headless --num_envs 4096 --max_iterations 2000        # standard
+python scripts/rsl_rl/train.py --task Unitree-Go2-Velocity-Crawl --headless --num_envs 4096 --max_iterations 2000  # crawl
+```
+Our task configs are in `training/go2_tasks/`. Export a run for the robot from the repo root:
+```bash
+.venv/bin/python deploy/export_policy.py --out deploy/policies/go2_crawl.npz \
+  --run_dir third_party/unitree_rl_lab/logs/rsl_rl/unitree_go2_velocity_crawl/<date>
 ```
 
-> [!WARNING]
-> The VLA does not stop at the goal or avoid obstacles. Keep the floor clear and the remote in hand.
+## 3. Deploy the VLA with the RL policy
 
-### With our own RL policy
-
-Instead of sport mode, the legs can be driven by our Isaac Lab crawl policy (`deploy/run_policy.py`).
-Start with the robot lying down, `run_policy.py` turns sport mode off.
+Robot lying down, floor clear, remote in hand. The VLA does not stop at the goal or avoid obstacles.
 ```bash
-# Terminal 1: camera frames for the VLA only, the bridge does not move the robot
-deploy/.venv/bin/python -m deploy.go2_vla_bridge --camera-only --duration 600
-# Terminal 2: policy with velocity commands from the VLA, keys s = stand, p = policy, l = lie down, d = damp
+# Terminal 1: camera stream for the VLA
+deploy/.venv/bin/python -m deploy.vla_bridge --camera-only --duration 600
+# Terminal 2: policy. Enter releases sport mode, then s = stand, p = policy, l = lie down, d = damp (+Enter)
 deploy/.venv/bin/python deploy/run_policy.py $GO2_IFACE \
-  --policy deploy/policies/go2_crawl_v3.npz --cmd_source bus --bus_max_v 0.5
-# Terminal 3: once the robot is in the policy state, start the VLA, Ctrl+C stops the robot
-highlevel/.venv/bin/python -m highlevel.omnivla_7b_node --prompt "go to the wooden pallet" --max-v 0.5 --max-w 0.5
+  --policy deploy/example_policies/go2_crawl.npz --cmd_source bus --bus_max_v 0.5
+# Terminal 3: once in POLICY, start the VLA. Ctrl+C stops the robot
+vla/.venv/bin/python -m vla.omnivla_7b --prompt "go to the wooden pallet" --max-v 0.5 --max-w 0.5
 ```
-Moving a stick overrides the VLA, and without VLA commands the robot stands still.
-The crawl policy barely moves below ~0.5 m/s, so keep `--max-v` at 0.5 or more.
-Details and test results: [docs/real_robot_setup.md](docs/real_robot_setup.md#9c-crawl-v3-driven-by-the-vla--2026-11-02).
+* Add `--dry_run` to terminal 2 to test without moving the robot.
+* The sticks override the VLA. The crawl policy barely moves below 0.5 m/s.
+* `./scripts/look.sh` shows which objects the robot sees. Use those in prompts.
 
-## Tips
-
-* Pick prompts with objects that `look.sh` finds. Distinct objects like doors work best,
-  motion commands like "turn left" don't.
-* Keep `--min-v` around 0.35, the Go2 stalls at lower speeds.
-* `highlevel.omnivla_edge_node` is faster than the 7B model but mostly ignores the prompt.
-* Each run is logged to `training/outputs/real_vla/`.
-* If the robot is not found, check the cable and `GO2_IFACE`.
-
-## Locomotion RL in Isaac Lab
-
-This part is separate from the VLA and still work in progress: we train our own walking policy
-for the Go2 in Isaac Lab. See above for running it with the VLA.
-
-### Setup
-
-Environment is managed with [uv](https://docs.astral.sh/uv/), pinned to
-Python 3.11 (required by Isaac Sim 5.x). Isaac Sim + Isaac Lab are a
-multi-GB install pulled from NVIDIA's pip index rather than PyPI, which
-also pulls in the matched torch/rsl-rl/gymnasium versions — see the
-comment in `pyproject.toml` for why this isn't a plain `uv add`:
-
+To use sport mode instead of the RL policy, keep the VLA (terminal 3) running and replace terminals 1 and 2 with this.
+The robot should be standing. Drop `--live` for a dry run.
 ```bash
-./scripts/install_isaaclab.sh
+deploy/.venv/bin/python -m deploy.vla_bridge --via sport --duration 5 --max-v 0.5 --min-v 0.35 --live
 ```
-
-This creates `.venv` (Python 3.11.16) and installs
-`isaaclab[isaacsim,all]==2.3.2.post1`, giving torch 2.7.0+cu126,
-rsl-rl-lib 3.0.1, gymnasium 1.2.0.
-
-Unitree's own Isaac-Lab-based reference implementation for Go2
-(`unitree_rl_lab`) is the recommended starting point for the env/task
-config. Clone and install it into the same `.venv` once Isaac Lab is installed:
-
-```bash
-git clone https://github.com/unitreerobotics/unitree_rl_lab third_party/unitree_rl_lab
-cd third_party/unitree_rl_lab && ./unitree_rl_lab.sh -i
-```
-
-(Note: PLAN.md's "Open questions" section mentions `unitree_rl_gym` as the
-Go2 reference — that repo targets the older Isaac Gym / MuJoCo stack.
-Since the plan settled on Isaac Lab as the simulator, `unitree_rl_lab` is
-the actual matching reference repo and is what's linked above.)
-
-### Virtual environments
-
-| Venv | Python | Used for | Contents | Created by |
-|------|--------|----------|----------|------------|
-| `.venv` (training) | 3.11 | Isaac Lab training/rollouts, policy export (`deploy/export_policy_npz.py`), plotting | Isaac Sim/Lab, torch, rsl-rl, matplotlib, numpy 1.26 | `./scripts/install_isaaclab.sh` |
-| `highlevel/.venv` (VLA) | 3.10 | OmniVLA nodes, object detection | torch 2.2, OmniVLA, transformers | `./scripts/install_vla.sh` |
-| `deploy/.venv` (robot) | 3.10 | Everything that talks to the real Go2 (`deploy/read_*.py`, `shadow_policy.py`, `run_policy.py`, `go2_vla_bridge.py`) | `unitree_sdk2py` (+ `cyclonedds==0.10.2`), numpy 2.x, pillow — **no torch, no Isaac** | `./scripts/install_deploy.sh` |
-
-They are kept separate because their torch/numpy/cyclonedds pins clash, and the
-robot side should stay small enough to also run on the Go2's onboard computer.
-Isaac Sim 5.x needs Python 3.11; the robot env uses 3.10 because `cyclonedds==0.10.2`
-only has prebuilt wheels up to 3.10, so no CycloneDDS C build is needed.
-The envs only exchange data: policies as a numpy `.npz` (`deploy/export_policy_npz.py`),
-velocity commands and camera frames over UDP (`command_bus/`).
-Don't pickle anything that crosses envs, and keep shared code 3.10-compatible.
-
-Details and the per-user DDS log-file patch: [docs/real_robot_setup.md](docs/real_robot_setup.md).
-
-## Layout
-
-- `sim/` — Isaac Lab env, task configs, domain randomization
-- `training/` — rsl_rl PPO configs, training scripts
-- `actuator_net/` — real motor data logging + system ID fitting
-- `deploy/` — policy export to numpy, unitree_sdk2 shadow/closed-loop deploy, plotting (see `deploy/README.md`), VLA bridge
-- `highlevel/` — VLA nodes and object detection
-- `command_bus/` — command topic def, arbitration, RC driver, e-stop supervisor
-- `docs/` — notes, design docs
+More details and results: [deploy/real_robot_setup.md](deploy/real_robot_setup.md#vla-with-the-crawl-policy).

@@ -42,12 +42,12 @@ from unitree_sdk2py.idl.default import unitree_go_msg_dds__LowCmd_
 from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowCmd_, LowState_
 from unitree_sdk2py.utils.crc import CRC
 
-from go2_policy import Go2Policy
-from go2_remote import Remote
+from policy import Go2Policy
+from remote import Remote
 
 # command_bus/ lives in the repo root
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from command_bus.bus import CommandArbiter  # noqa: E402
+from command_bus.bus import CommandSubscriber  # noqa: E402
 
 CTRL_DT = 0.002
 POS_STOP_F = 2.146e9
@@ -107,7 +107,7 @@ class KeyboardInput:
 
 class Controller:
     def __init__(self, policy, lowstate, dry_run, cmd_scale, stand_time, sit_time,
-                 arbiter=None, bus_max_v=0.3, bus_max_w=0.5):
+                 subscriber=None, bus_max_v=0.3, bus_max_w=0.5):
         self.policy = policy
         self.lowstate = lowstate
         self.dry_run = dry_run
@@ -115,7 +115,7 @@ class Controller:
         self.stand_time = stand_time
         self.sit_time = sit_time
         self.remote = Remote()
-        self.arbiter = arbiter
+        self.subscriber = subscriber
         self.bus_max = np.array([bus_max_v, bus_max_v, bus_max_w], dtype=np.float32)
         self.cmd_from = "sticks"
         self.keyboard = KeyboardInput()
@@ -242,11 +242,11 @@ class Controller:
 
     def command(self):
         sticks = self.stick_command()
-        if self.arbiter is None or np.any(sticks != 0.0):
+        if self.subscriber is None or np.any(sticks != 0.0):
             self.cmd_from = "sticks"
             return sticks
         # No fresh bus command means stand still
-        bus = self.arbiter.get()
+        bus = self.subscriber.get()
         self.cmd_from = bus.source
         cmd = np.array([bus.vx, bus.vy, bus.yaw_rate], dtype=np.float32)
         cmd = np.clip(cmd, -self.bus_max, self.bus_max)
@@ -294,7 +294,7 @@ def release_sport_mode():
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("interface")
-    parser.add_argument("--policy", default="deploy/policies/go2_velocity.npz")
+    parser.add_argument("--policy", default="deploy/example_policies/go2_velocity.npz")
     parser.add_argument("--dry_run", action="store_true",
                         help="run FSM + policy but publish nothing and leave sport mode alone")
     parser.add_argument("--cmd_scale", type=float, default=0.3,
@@ -324,9 +324,9 @@ def main():
         input("Press Enter to release sport mode and start in PASSIVE (damping) ...")
         release_sport_mode()
 
-    arbiter = CommandArbiter() if args.cmd_source == "bus" else None
+    subscriber = CommandSubscriber() if args.cmd_source == "bus" else None
     ctrl = Controller(policy, lowstate, args.dry_run, args.cmd_scale, args.stand_time, args.sit_time,
-                      arbiter, args.bus_max_v, args.bus_max_w)
+                      subscriber, args.bus_max_v, args.bus_max_w)
     print("controls: remote L2+A / key 's' = stand,  start / 'p' = policy,  "
           "L2+X / 'l' = lie down,  L2+B / 'd' = damp (emergency),  'q' or Ctrl+C = quit "
           "(keys need Enter)")

@@ -21,7 +21,7 @@ from unitree_sdk2py.go2.sport.sport_client import SportClient
 from unitree_sdk2py.go2.video.video_client import VideoClient
 from unitree_sdk2py.idl.unitree_go.msg.dds_ import SportModeState_
 
-from command_bus.bus import CommandArbiter
+from command_bus.bus import CommandSubscriber
 from command_bus.frames import FramePublisher
 
 CONTROL_HZ = 20
@@ -208,7 +208,7 @@ def main() -> None:
         if not avoid:
             sport.StopMove()
 
-    arbiter = CommandArbiter()
+    subscriber = CommandSubscriber()
     camera.start()
     mode_name = f"LIVE via {args.via}" if args.live else "DRY RUN"
     print(f"{mode_name} for {args.duration:.0f}s, logging to {run_dir}", flush=True)
@@ -218,7 +218,7 @@ def main() -> None:
     try:
         while time.time() - start < args.duration:
             # Clip command
-            cmd = arbiter.get()
+            cmd = subscriber.get()
             vx = min(max(cmd.vx, 0.0), args.max_v)
             if 0.0 < vx < args.min_v:
                 vx = min(args.min_v, args.max_v)

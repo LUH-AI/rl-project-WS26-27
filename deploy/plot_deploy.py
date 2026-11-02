@@ -1,4 +1,4 @@
-"""Plot a real-robot policy log (shadow_policy.py, later the deploy loop).
+"""Plot a real-robot policy log (from run_policy.py).
 
 Writes three PNGs next to --out_prefix:
   <prefix>_overview.png  base state over time: projected gravity, gyro, action size, command
@@ -6,8 +6,8 @@ Writes three PNGs next to --out_prefix:
   <prefix>_vs_sim.png    per-dimension obs / action mean ± std, real vs sim
                          (only with --sim, a training/rollout_and_log.py .npz with obs/action)
 
-    .venv/bin/python deploy/plot_deploy.py --real shadow_stand.npz \
-        --sim training/outputs/rollout_cmd0.npz --out_prefix deploy/plots/shadow_stand
+    .venv/bin/python deploy/plot_deploy.py --real deploy_log.npz \
+        --sim training/outputs/rollout_cmd0.npz --out_prefix deploy/plots/run
 """
 
 import argparse
@@ -28,7 +28,7 @@ XYZ = [REAL, SECOND, THIRD]
 
 LEGS = ["FL", "FR", "RL", "RR"]
 PARTS = ["hip", "thigh", "calf"]
-OBS_SLICES = {  # term -> (start, end, scale); matches go2_policy.OBS_TERMS
+OBS_SLICES = {  # term -> (start, end, scale); matches policy.OBS_TERMS
     "base_ang_vel": (0, 3, 0.2),
     "projected_gravity": (3, 6, 1.0),
     "velocity_commands": (6, 9, 1.0),
@@ -119,9 +119,9 @@ def vs_sim(real, sim, path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--real", required=True, help="shadow/deploy log .npz")
+    parser.add_argument("--real", required=True, help="run_policy.py log .npz")
     parser.add_argument("--sim", default=None, help="rollout_and_log.py .npz with obs/action")
-    parser.add_argument("--policy", default="deploy/policies/go2_velocity.npz",
+    parser.add_argument("--policy", default="deploy/example_policies/go2_velocity.npz",
                         help="for the training default pose line")
     parser.add_argument("--out_prefix", required=True)
     args = parser.parse_args()
