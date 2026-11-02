@@ -1,3 +1,8 @@
+# necessary steps to move to the folder on the login node
+# ssh luis
+# cd /bigwork/nhwpchem/Repo/rl-project
+# uvenv # this will activate the virtual environment
+
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32GB
 #SBATCH -J job_name

@@ -18,8 +18,10 @@ dependencies = [
 
 [project.optional-dependencies]
 deploy = [
-    # Real-robot / Jetson Orin NX control loop (command_bus/, deploy/).
-    # Not needed for sim training, kept as an optional group.
+    # Real-robot control loop (command_bus/, deploy/). Not used in practice:
+    # the robot side lives in a separate `.venv-deploy` with unitree_sdk2py
+    # installed from source (needs the CycloneDDS C library) — see README.md
+    # "Two virtual environments".
     "unitree_sdk2py",
     "onnxruntime-gpu",
 ]
