@@ -18,13 +18,17 @@ Start with the robot LYING DOWN on the floor: unless --dry_run, the script
 releases sport mode (StandDown + ReleaseMode), after which the legs go limp.
 
     # dry run: full FSM + policy, publishes nothing, sport mode untouched
-    .venv-deploy/bin/python deploy/run_policy.py enxf8e43b9f046a --dry_run
+    deploy/.venv/bin/python deploy/run_policy.py enxf8e43b9f046a --dry_run
 
     # real
-    .venv-deploy/bin/python deploy/run_policy.py enxf8e43b9f046a --cmd_scale 0.3
+    deploy/.venv/bin/python deploy/run_policy.py enxf8e43b9f046a --cmd_scale 0.3
+
+    # velocity commands from the command bus (e.g. the VLA), sticks still override
+    deploy/.venv/bin/python deploy/run_policy.py enxf8e43b9f046a --cmd_source bus --bus_max_v 0.3
 """
 
 import argparse
+import os
 import select
 import sys
 import threading
@@ -40,6 +44,10 @@ from unitree_sdk2py.utils.crc import CRC
 
 from go2_policy import Go2Policy
 from go2_remote import Remote
+
+# command_bus/ lives in the repo root
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from command_bus.bus import CommandArbiter  # noqa: E402
 
 CTRL_DT = 0.002
 POS_STOP_F = 2.146e9
@@ -98,7 +106,8 @@ class KeyboardInput:
 
 
 class Controller:
-    def __init__(self, policy, lowstate, dry_run, cmd_scale, stand_time, sit_time):
+    def __init__(self, policy, lowstate, dry_run, cmd_scale, stand_time, sit_time,
+                 arbiter=None, bus_max_v=0.3, bus_max_w=0.5):
         self.policy = policy
         self.lowstate = lowstate
         self.dry_run = dry_run
@@ -106,6 +115,9 @@ class Controller:
         self.stand_time = stand_time
         self.sit_time = sit_time
         self.remote = Remote()
+        self.arbiter = arbiter
+        self.bus_max = np.array([bus_max_v, bus_max_v, bus_max_w], dtype=np.float32)
+        self.cmd_from = "sticks"
         self.keyboard = KeyboardInput()
         self.crc = CRC()
 
@@ -208,7 +220,7 @@ class Controller:
     def run_policy(self):
         if self.tick % round(self.policy.step_dt / CTRL_DT) == 0:
             msg = self.lowstate.msg
-            self.cmd = self.stick_command()
+            self.cmd = self.command()
             state = self.policy.read_state(msg)
             obs, action, target = self.policy.step(state, self.cmd)
             self.q_target_sdk = self.policy.to_sdk_order(target)
@@ -228,6 +240,18 @@ class Controller:
         lo, hi = self.policy.cmd_ranges[:, 0], self.policy.cmd_ranges[:, 1]
         return np.clip(sticks * self.cmd_scale * np.maximum(np.abs(lo), np.abs(hi)), lo, hi)
 
+    def command(self):
+        sticks = self.stick_command()
+        if self.arbiter is None or np.any(sticks != 0.0):
+            self.cmd_from = "sticks"
+            return sticks
+        # No fresh bus command means stand still
+        bus = self.arbiter.get()
+        self.cmd_from = bus.source
+        cmd = np.array([bus.vx, bus.vy, bus.yaw_rate], dtype=np.float32)
+        cmd = np.clip(cmd, -self.bus_max, self.bus_max)
+        return np.clip(cmd, self.policy.cmd_ranges[:, 0], self.policy.cmd_ranges[:, 1])
+
     def write(self, q, kp, kd):
         q = np.clip(q, Q_MIN, Q_MAX)
         for i in range(12):
@@ -245,6 +269,7 @@ class Controller:
 
     def status_line(self):
         return (f"[{time.time() - self.t0:7.2f}s] {self.state:7s} cmd={np.round(self.cmd, 2).tolist()} "
+                f"from={self.cmd_from} "
                 f"battery={self.lowstate.msg.power_v:.1f}V")
 
 
@@ -276,6 +301,10 @@ def main():
                         help="fraction of the training command range the sticks can reach")
     parser.add_argument("--stand_time", type=float, default=2.0, help="seconds for the stand-up")
     parser.add_argument("--sit_time", type=float, default=2.0, help="seconds for the lie-down")
+    parser.add_argument("--cmd_source", choices=["sticks", "bus"], default="sticks",
+                        help="bus: velocity commands from command_bus (e.g. the VLA), sticks override")
+    parser.add_argument("--bus_max_v", type=float, default=0.3, help="max |vx|, |vy| from the bus")
+    parser.add_argument("--bus_max_w", type=float, default=0.5, help="max |wz| from the bus")
     parser.add_argument("--out", default="deploy_log.npz")
     args = parser.parse_args()
 
@@ -295,7 +324,9 @@ def main():
         input("Press Enter to release sport mode and start in PASSIVE (damping) ...")
         release_sport_mode()
 
-    ctrl = Controller(policy, lowstate, args.dry_run, args.cmd_scale, args.stand_time, args.sit_time)
+    arbiter = CommandArbiter() if args.cmd_source == "bus" else None
+    ctrl = Controller(policy, lowstate, args.dry_run, args.cmd_scale, args.stand_time, args.sit_time,
+                      arbiter, args.bus_max_v, args.bus_max_w)
     print("controls: remote L2+A / key 's' = stand,  start / 'p' = policy,  "
           "L2+X / 'l' = lie down,  L2+B / 'd' = damp (emergency),  'q' or Ctrl+C = quit "
           "(keys need Enter)")

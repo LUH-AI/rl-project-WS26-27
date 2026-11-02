@@ -4,7 +4,7 @@ the stick values. Publishes nothing.
 Run it while sport mode is OFF (e.g. after go2_stand_example.py), so the
 button presses don't also trigger sport-mode actions on the robot.
 
-    .venv-deploy/bin/python deploy/read_remote.py enxf8e43b9f046a
+    deploy/.venv/bin/python deploy/read_remote.py enxf8e43b9f046a
 """
 
 import sys

@@ -31,6 +31,8 @@ parser.add_argument("--out", type=str, default="training/outputs/rollout.npz")
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--cmd", type=float, nargs=3, default=None, metavar=("VX", "VY", "WZ"),
                     help="fix the velocity command (e.g. 0 0 0 to compare with real shadow-mode logs)")
+parser.add_argument("--cmd_log", type=str, default=None,
+                    help="replay the vx/wz commands of a deploy/go2_vla_bridge.py commands.jsonl")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()
@@ -39,6 +41,8 @@ args_cli.enable_cameras = False
 
 app_launcher = AppLauncher(args_cli)
 simulation_app = app_launcher.app
+
+import json  # noqa: E402
 
 import gymnasium as gym  # noqa: E402
 import numpy as np  # noqa: E402
@@ -73,6 +77,20 @@ def main():
                 ranges.lin_vel_y = (vy, vy)
                 ranges.ang_vel_z = (wz, wz)
 
+    replay = None
+    if args_cli.cmd_log is not None:
+        # Commands are written every step, so stop the env from resampling them
+        # and turn off pushes so the tracking error is the policy's own
+        with open(args_cli.cmd_log) as f:
+            replay = [json.loads(line) for line in f]
+        cmd_cfg = env_cfg.commands.base_velocity
+        cmd_cfg.rel_standing_envs = 0.0
+        cmd_cfg.heading_command = False
+        cmd_cfg.resampling_time_range = (1e9, 1e9)
+        if getattr(env_cfg.events, "push_robot", None) is not None:
+            env_cfg.events.push_robot = None
+        args_cli.steps = int(replay[-1]["t"] / env_cfg.sim.dt / env_cfg.decimation)
+
     log_root_path = os.path.abspath(os.path.join("logs", "rsl_rl", agent_cfg.experiment_name))
     resume_path = get_checkpoint_path(log_root_path, agent_cfg.load_run, agent_cfg.load_checkpoint)
     print(f"[INFO] Loading checkpoint from: {resume_path}")
@@ -98,9 +116,23 @@ def main():
     command_log = []
     obs_log = []
     action_log = []
+    lin_vel_log = []
+    ang_vel_log = []
+
+    command_term = env.unwrapped.command_manager.get_term("base_velocity")
+    step_dt = env.unwrapped.step_dt
+    replay_idx = 0
 
     with torch.inference_mode():
-        for _ in range(args_cli.steps):
+        for step in range(args_cli.steps):
+            if replay is not None:
+                # Hold the newest logged command, like the bridge does
+                while replay_idx + 1 < len(replay) and replay[replay_idx + 1]["t"] <= step * step_dt:
+                    replay_idx += 1
+                entry = replay[replay_idx]
+                command_term.vel_command_b[:, 0] = entry["vx"]
+                command_term.vel_command_b[:, 1] = 0.0
+                command_term.vel_command_b[:, 2] = entry["wz"]
             actions = policy(obs)
             policy_obs = obs["policy"] if hasattr(obs, "keys") else obs
             obs_log.append(policy_obs[0].cpu().numpy().copy())
@@ -110,6 +142,8 @@ def main():
             joint_pos_log.append(robot.data.joint_pos[0].cpu().numpy().copy())
             root_pos_log.append((robot.data.root_pos_w[0].cpu().numpy() - env_origin).copy())
             root_quat_log.append(robot.data.root_quat_w[0].cpu().numpy().copy())
+            lin_vel_log.append(robot.data.root_lin_vel_b[0].cpu().numpy().copy())
+            ang_vel_log.append(robot.data.root_ang_vel_b[0].cpu().numpy().copy())
             command_log.append(
                 env.unwrapped.command_manager.get_command("base_velocity")[0].cpu().numpy().copy()
             )
@@ -123,9 +157,25 @@ def main():
         command=np.stack(command_log),
         obs=np.stack(obs_log),
         action=np.stack(action_log),
-        dt=env.unwrapped.step_dt,
+        base_lin_vel_b=np.stack(lin_vel_log),
+        base_ang_vel_b=np.stack(ang_vel_log),
+        dt=step_dt,
     )
-    print(f"[INFO] Saved {args_cli.steps}-step trajectory to {args_cli.out}")
+    print(f"[INFO] Saved {args_cli.steps}-step trajectory to {args_cli.out}", flush=True)
+
+    if replay is not None:
+        # Skip the first second while the robot speeds up
+        command = np.stack(command_log)[int(1.0 / step_dt):]
+        lin_vel = np.stack(lin_vel_log)[int(1.0 / step_dt):]
+        ang_vel = np.stack(ang_vel_log)[int(1.0 / step_dt):]
+        print(f"[INFO] vx: mean cmd {command[:, 0].mean():+.2f}, mean sim {lin_vel[:, 0].mean():+.2f}, "
+              f"mean abs err {np.abs(command[:, 0] - lin_vel[:, 0]).mean():.3f} m/s", flush=True)
+        print(f"[INFO] wz: mean abs err {np.abs(command[:, 2] - ang_vel[:, 2]).mean():.3f} rad/s", flush=True)
+        real = [e for e in replay if e["t"] >= 1.0 and e.get("sent") and "vx_measured" in e]
+        if real:
+            print(f"[INFO] real robot (sport mode) over the same log: "
+                  f"vx err {np.mean([abs(e['vx'] - e['vx_measured']) for e in real]):.3f} m/s, "
+                  f"wz err {np.mean([abs(e['wz'] - e['wz_measured']) for e in real]):.3f} rad/s", flush=True)
 
     env.close()
 

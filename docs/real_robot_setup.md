@@ -20,32 +20,15 @@ from the workstation. Test in increasing order of risk:
 > no hardware testing at all so far, while the Python track above is already
 > through Step 2 and mid-way through Step 3.
 
-## 1. Install CycloneDDS 0.10.x (C library)
-
-`cyclonedds==0.10.2` (pulled in by the SDK) fails to build with
-`Could not locate cyclonedds` unless the C library is available.
-
-```bash
-cd ~/Repos
-git clone https://github.com/eclipse-cyclonedds/cyclonedds -b releases/0.10.x
-cd cyclonedds && mkdir build install && cd build
-cmake .. -DCMAKE_INSTALL_PREFIX=../install -DBUILD_EXAMPLES=OFF -DBUILD_TESTING=OFF
-cmake --build . --target install -j"$(nproc)"
-```
-
-`CYCLONEDDS_HOME=~/Repos/cyclonedds/install` is only needed when (re)installing,
-not at runtime.
-
-## 2. Install `unitree_sdk2_python` in a separate venv
+## 1. Install `unitree_sdk2_python` in a separate venv
 
 Kept separate from the Isaac Lab env to avoid numpy/cyclonedds clashes.
+Python 3.10, because `cyclonedds==0.10.2` (pulled in by the SDK) only has
+prebuilt wheels up to 3.10; on newer Pythons it builds from source and needs
+the CycloneDDS C library (`CYCLONEDDS_HOME`).
 
 ```bash
-cd ~/Repos/rl-project
-git clone https://github.com/unitreerobotics/unitree_sdk2_python third_party/unitree_sdk2_python
-uv venv .venv-deploy --python 3.11
-CYCLONEDDS_HOME=~/Repos/cyclonedds/install \
-  uv pip install --python .venv-deploy -e third_party/unitree_sdk2_python
+./scripts/install_deploy.sh   # clones the SDK and creates deploy/.venv
 ```
 
 ### Local patch: per-user DDS log file
@@ -62,7 +45,7 @@ fails with `channel factory init error`. Patched
 
 `third_party/` is gitignored — **re-apply this after re-cloning the SDK.**
 
-## 3. Network
+## 2. Network
 
 - Robot reachable over the USB-Ethernet adapter `enxf8e43b9f046a`
   (workstation IP `192.168.123.51/24`, robot `192.168.123.161`).
@@ -71,10 +54,10 @@ fails with `channel factory init error`. Patched
 - Don't source `/opt/ros/*/setup.bash` in the SDK shell (ROS 2 ships its own
   CycloneDDS / `CYCLONEDDS_URI`).
 
-## 4. Step 0 — read-only `rt/lowstate` ✅
+## 3. Step 0 — read-only `rt/lowstate` ✅
 
 ```bash
-.venv-deploy/bin/python deploy/read_lowstate.py enxf8e43b9f046a
+deploy/.venv/bin/python deploy/read_lowstate.py enxf8e43b9f046a
 ```
 
 Prints IMU, foot force, battery and the 12 joints once per second; publishes
@@ -87,10 +70,10 @@ nothing. Result on first run (robot standing in sport mode):
 Motor order in `motor_state[0:12]`: FR, FL, RR, RL × (hip, thigh, calf).
 Check this against the sim joint order before running any policy.
 
-## 5. Step 1 — high-level sport API ✅
+## 4. Step 1 — high-level sport API ✅
 
 ```bash
-.venv-deploy/bin/python third_party/unitree_sdk2_python/example/go2/high_level/go2_sport_client.py enxf8e43b9f046a
+deploy/.venv/bin/python third_party/unitree_sdk2_python/example/go2/high_level/go2_sport_client.py enxf8e43b9f046a
 ```
 
 Robot on flat ground (not on a stand), clear space, remote in hand
@@ -104,13 +87,13 @@ Robot on flat ground (not on a stand), clear space, remote in hand
 Avoid: `damp` (0) while standing (legs go limp), and the acrobatic modes
 (7 hand stand, 11/12 flips, 17 walk upright, 18 cross step, 19 free jump).
 
-## 6. Step 2 — low-level `rt/lowcmd` stand-up ✅
+## 5. Step 2 — low-level `rt/lowcmd` stand-up ✅
 
 No stand needed. Robot lying down on the floor first (`stand_down` via the
 sport client), ~1 m clear around it.
 
 ```bash
-.venv-deploy/bin/python third_party/unitree_sdk2_python/example/go2/low_level/go2_stand_example.py enxf8e43b9f046a
+deploy/.venv/bin/python third_party/unitree_sdk2_python/example/go2/low_level/go2_stand_example.py enxf8e43b9f046a
 ```
 
 What the script does (Kp=60, Kd=5, commands at 500 Hz):
@@ -125,7 +108,7 @@ app/remote) before using the high-level API again.
 
 Worked on first try.
 
-## 7. Step 3 — Isaac Lab policy in shadow mode ✅
+## 6. Step 3 — Isaac Lab policy in shadow mode ✅
 
 Policy: `third_party/unitree_rl_lab/logs/rsl_rl/unitree_go2_velocity/2026-09-02_14-23-20/model_1999.pt`
 (45-dim obs → 512/256/128 ELU → 12, no obs normalizer). Its `params/deploy.yaml`
@@ -142,7 +125,7 @@ Export to a numpy-only `.npz` (weights + deploy.yaml; training venv, once):
 Run shadow mode (deploy venv; publishes nothing, Ctrl+C saves the log):
 
 ```bash
-.venv-deploy/bin/python deploy/shadow_policy.py enxf8e43b9f046a \
+deploy/.venv/bin/python deploy/shadow_policy.py enxf8e43b9f046a \
   --policy deploy/policies/go2_velocity.npz --cmd 0 0 0 --out shadow_log.npz
 ```
 
@@ -214,7 +197,7 @@ session, rather than assuming it matches `ReleaseMode()`'s behavior.
 > judged against an acceptance threshold or against sim
 > (`plot_deploy.py --sim`). Treated as acceptable for now.
 
-## 8. Step 4 — closed-loop policy (`deploy/run_policy.py`) ✅
+## 7. Step 4 — closed-loop policy (`deploy/run_policy.py`) ✅
 
 Python port of unitree_rl_lab's C++ Go2 FSM. The C++ code is used only as a
 reference for gains/thresholds; nothing is built in C++.
@@ -236,7 +219,7 @@ Dry run (publishes nothing, sport mode untouched) — tested 2026-10-11:
 PASSIVE→STAND→POLICY→PASSIVE via keys, policy at 50.0 Hz, fresh lowstate every step.
 
 ```bash
-.venv-deploy/bin/python deploy/run_policy.py enxf8e43b9f046a --dry_run
+deploy/.venv/bin/python deploy/run_policy.py enxf8e43b9f046a --dry_run
 ```
 
 Before the real run:
@@ -244,7 +227,7 @@ Before the real run:
 1. **Verify the remote mapping** (parser in `deploy/go2_remote.py` is written
    from Unitree's struct layout, not yet checked). With sport mode off (e.g.
    right after `go2_stand_example.py`), run
-   `.venv-deploy/bin/python deploy/read_remote.py enxf8e43b9f046a` and check
+   `deploy/.venv/bin/python deploy/read_remote.py enxf8e43b9f046a` and check
    L2, A, B, start and the sticks print correctly (ly>0 when pushing forward).
    Until verified, use the keyboard keys and keep Ctrl+C at hand.
 2. Robot lying down, ~1 m clear, someone ready to catch/hold it.
@@ -252,7 +235,7 @@ Before the real run:
 Real run:
 
 ```bash
-.venv-deploy/bin/python deploy/run_policy.py enxf8e43b9f046a --cmd_scale 0.3 --out deploy_stand.npz
+deploy/.venv/bin/python deploy/run_policy.py enxf8e43b9f046a --cmd_scale 0.3 --out deploy_stand.npz
 ```
 
 `s` (stand) → wait for the stand-up → `p` (policy, sticks centered = stand in
@@ -297,7 +280,7 @@ Limitations: never saw stairs/slopes/rough ground; trained with ideal PD
 actuators (no actuator net yet). Deployed so far with `--cmd_scale` 0.3 and 1.0
 (full training command range).
 
-## 9b. Low-height "crawl" policy ⬜
+## 9b. Low-height "crawl" policy ⬜ (superseded by 9c)
 
 Candidates trained 2026-10-11 (all share the deployed policy's `deploy.yaml`:
 same obs, action scale, gains, default pose, so `run_policy.py` is unchanged):
@@ -317,9 +300,103 @@ below standard) and is the one chosen for deployment:
   --run_dir third_party/unitree_rl_lab/logs/rsl_rl/unitree_go2_velocity_crawl/2026-10-11_17-39-38 \
   --checkpoint model_1999.pt --out deploy/policies/go2_crawl.npz
 
-.venv-deploy/bin/python deploy/run_policy.py enxf8e43b9f046a \
+deploy/.venv/bin/python deploy/run_policy.py enxf8e43b9f046a \
   --policy deploy/policies/go2_crawl.npz --cmd_scale 0.3 --out deploy_crawl.npz
 ```
 
 Expected: after `p` the robot drops from the stand pose (~0.33 m) to its
 crouch (~0.29 m); that is the policy, not a fault.
+
+## 9c. Crawl v3 driven by the VLA ✅ (2026-11-02)
+
+The VLA (`highlevel/omnivla_7b_node.py`) sends velocity commands over the
+command bus, `run_policy.py --cmd_source bus` feeds them to the crawl policy
+instead of the sticks, and `go2_vla_bridge.py --camera-only` streams the camera
+to the VLA. The camera keeps working after `run_policy.py` releases sport mode.
+
+| | |
+|---|---|
+| Checkpoint | `third_party/unitree_rl_lab/logs/rsl_rl/unitree_go2_velocity_crawl/2026-11-02_22-31-16/model_1999.pt` (`Unitree-Go2-Velocity-Crawl`, height target 0.22 m, weight −120, 4-beat gait reward) |
+| Exported as | `deploy/policies/go2_crawl_v3.npz` |
+| Training log | `training/outputs/crawl_experiment_v3.log`: episode length 995/1000, `error_vel_xy` 0.32, `error_vel_yaw` 0.45 |
+| Sim body height | ~0.25 m |
+
+```bash
+.venv/bin/python deploy/export_policy_npz.py \
+  --run_dir third_party/unitree_rl_lab/logs/rsl_rl/unitree_go2_velocity_crawl/2026-11-02_22-31-16 \
+  --checkpoint model_1999.pt --out deploy/policies/go2_crawl_v3.npz
+```
+
+### Dead zone at low speed
+
+The policy barely moves for small forward commands
+(`training/rollout_and_log.py --cmd VX 0 0`, steady state, sim):
+
+| Command vx [m/s] | 0.2 | 0.4 | 0.6 | 0.8 | 1.0 |
+|---|---|---|---|---|---|
+| Sim vx [m/s] | 0.01 | 0.08 | 0.27 | 0.62 | 0.81 |
+
+The VLA always commands its `--max-v` (its waypoints are far enough ahead to
+saturate), so `--max-v` / `--bus_max_v` set the crawl speed directly:
+**at 0.3 the robot only turns on the spot, use 0.5 or more.** For the same
+reason, driving with the sticks needs `--cmd_scale 1.0`.
+
+Replaying the logged VLA commands of a sport mode run
+(`real_vla/20261102-224032-live/commands.jsonl`) in sim:
+
+```bash
+cd third_party/unitree_rl_lab
+../../.venv/bin/python ../../training/rollout_and_log.py --task Unitree-Go2-Velocity-Crawl \
+  --num_envs 1 --load_run 2026-11-02_22-31-16 --checkpoint model_1999.pt \
+  --cmd_log ../../training/outputs/real_vla/20261102-224032-live/commands.jsonl \
+  --out ../../training/outputs/replay_vla_crawl.npz
+```
+
+| Policy (sim) | vx cmd → actual | vx err | wz err |
+|---|---|---|---|
+| `go2_velocity` | 0.50 → 0.47 | 0.033 | 0.054 |
+| `go2_crawl_v3` | 0.50 → 0.35 | 0.155 | 0.067 |
+| `go2_crawl_v3` (capped at 0.3) | 0.30 → 0.07 | 0.227 | 0.096 |
+| sport mode (real, same log) | 0.50 → ~0.45 | 0.083 | 0.067 |
+
+### Steps
+
+Robot lying down, ~2 m clear in front, remote in hand.
+
+1. **Camera** (terminal 1), keep it running for all runs:
+   ```bash
+   deploy/.venv/bin/python -m deploy.go2_vla_bridge --camera-only --duration 600
+   ```
+2. **Dry run** (terminal 3, robot can stay in sport mode, nothing is published):
+   ```bash
+   deploy/.venv/bin/python deploy/run_policy.py enxf8e43b9f046a \
+     --policy deploy/policies/go2_crawl_v3.npz --cmd_source bus --bus_max_v 0.5 --dry_run
+   ```
+   Start the VLA (step 4), type `s`, wait 2 s, `p`. Check for
+   `POLICY cmd=[0.5, 0.0, ...] from=highlevel`, then `q` and stop the VLA.
+3. **Live** (terminal 3): same command without `--dry_run`. Press Enter to
+   release sport mode, `s` to stand, `p` for the policy. With the VLA off it
+   crouches and stands in place (`from=none`); check terminal 1 still shows
+   `cam_err=0`.
+4. **VLA** (terminal 2), start it once the robot is in POLICY. It loads for ~12 s,
+   then the robot starts crawling:
+   ```bash
+   highlevel/.venv/bin/python -m highlevel.omnivla_7b_node \
+     --prompt "go to the wooden pallet" --max-v 0.5 --max-w 0.5
+   ```
+5. **Stop**: Ctrl+C in terminal 2 → robot stands still within ~0.5 s.
+   `l` in terminal 3 lies it down; emergency: L2+B or `d`.
+
+Gotchas:
+- `--policy` defaults to `go2_velocity.npz` and `--cmd_source` to `sticks`;
+  forgetting either gives the standard policy on the sticks, capped at 0.3 m/s
+  by `--cmd_scale 0.3`. Check a log with `Go2Policy(npz).forward(log["obs"])`
+  against `log["action"]` to see which policy ran.
+- Any stick input overrides the VLA, keep hands off the sticks while it drives.
+- `--max-v` (VLA) and `--bus_max_v` (`run_policy.py`) both cap the speed, the
+  lower one wins.
+- The VLA does not stop at the goal or avoid obstacles.
+
+Result: crawled under VLA control for ~17 s with vx = 0.5 command and mean
+|wz| 0.12 rad/s (`deploy_log.npz`, 23:12). Real forward speed is unmeasured
+(no odometry with sport mode released).
