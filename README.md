@@ -40,6 +40,23 @@ deploy/.venv/bin/python -m deploy.go2_vla_bridge --via sport --duration 5 --max-
 > [!WARNING]
 > The VLA does not stop at the goal or avoid obstacles. Keep the floor clear and the remote in hand.
 
+### With our own RL policy
+
+Instead of sport mode, the legs can be driven by our Isaac Lab crawl policy (`deploy/run_policy.py`).
+Start with the robot lying down, `run_policy.py` turns sport mode off.
+```bash
+# Terminal 1: camera frames for the VLA only, the bridge does not move the robot
+deploy/.venv/bin/python -m deploy.go2_vla_bridge --camera-only --duration 600
+# Terminal 2: policy with velocity commands from the VLA, keys s = stand, p = policy, l = lie down, d = damp
+deploy/.venv/bin/python deploy/run_policy.py $GO2_IFACE \
+  --policy deploy/policies/go2_crawl_v3.npz --cmd_source bus --bus_max_v 0.5
+# Terminal 3: once the robot is in the policy state, start the VLA, Ctrl+C stops the robot
+highlevel/.venv/bin/python -m highlevel.omnivla_7b_node --prompt "go to the wooden pallet" --max-v 0.5 --max-w 0.5
+```
+Moving a stick overrides the VLA, and without VLA commands the robot stands still.
+The crawl policy barely moves below ~0.5 m/s, so keep `--max-v` at 0.5 or more.
+Details and test results: [docs/real_robot_setup.md](docs/real_robot_setup.md#9c-crawl-v3-driven-by-the-vla--2026-11-02).
+
 ## Tips
 
 * Pick prompts with objects that `look.sh` finds. Distinct objects like doors work best,
@@ -52,7 +69,7 @@ deploy/.venv/bin/python -m deploy.go2_vla_bridge --via sport --duration 5 --max-
 ## Locomotion RL in Isaac Lab
 
 This part is separate from the VLA and still work in progress: we train our own walking policy
-for the Go2 in Isaac Lab. The VLA above does not use it.
+for the Go2 in Isaac Lab. See above for running it with the VLA.
 
 ### Setup
 
@@ -84,30 +101,21 @@ Go2 reference — that repo targets the older Isaac Gym / MuJoCo stack.
 Since the plan settled on Isaac Lab as the simulator, `unitree_rl_lab` is
 the actual matching reference repo and is what's linked above.)
 
-### Two virtual environments
+### Virtual environments
 
-| Venv | Used for | Contents | Created by |
-|------|----------|----------|------------|
-| `.venv` (training) | Isaac Lab training/rollouts, policy export (`deploy/export_policy_npz.py`), plotting | Isaac Sim/Lab, torch, rsl-rl, matplotlib, numpy 1.26 | `./scripts/install_isaaclab.sh` |
-| `.venv-deploy` (robot) | Everything that talks to the real Go2 (`deploy/read_*.py`, `shadow_policy.py`, `run_policy.py`) | `unitree_sdk2py` (+ `cyclonedds==0.10.2`), numpy 2.x — **no torch, no Isaac** | see below |
+| Venv | Python | Used for | Contents | Created by |
+|------|--------|----------|----------|------------|
+| `.venv` (training) | 3.11 | Isaac Lab training/rollouts, policy export (`deploy/export_policy_npz.py`), plotting | Isaac Sim/Lab, torch, rsl-rl, matplotlib, numpy 1.26 | `./scripts/install_isaaclab.sh` |
+| `highlevel/.venv` (VLA) | 3.10 | OmniVLA nodes, object detection | torch 2.2, OmniVLA, transformers | `./scripts/install_vla.sh` |
+| `deploy/.venv` (robot) | 3.10 | Everything that talks to the real Go2 (`deploy/read_*.py`, `shadow_policy.py`, `run_policy.py`, `go2_vla_bridge.py`) | `unitree_sdk2py` (+ `cyclonedds==0.10.2`), numpy 2.x, pillow — **no torch, no Isaac** | `./scripts/install_deploy.sh` |
 
-They are kept separate because the SDK's cyclonedds/numpy pins clash with the
-Isaac Lab env, and the robot side should stay small enough to also run on the
-Go2's onboard computer. Policies cross over as a numpy `.npz`
-(`deploy/export_policy_npz.py`), so the deploy side never needs torch.
-
-```bash
-# CycloneDDS 0.10.x C library (needed to build the cyclonedds wheel)
-git clone https://github.com/eclipse-cyclonedds/cyclonedds -b releases/0.10.x ~/Repos/cyclonedds
-cmake -S ~/Repos/cyclonedds -B ~/Repos/cyclonedds/build -DCMAKE_INSTALL_PREFIX=$HOME/Repos/cyclonedds/install \
-  -DBUILD_EXAMPLES=OFF -DBUILD_TESTING=OFF
-cmake --build ~/Repos/cyclonedds/build --target install -j
-
-git clone https://github.com/unitreerobotics/unitree_sdk2_python third_party/unitree_sdk2_python
-uv venv .venv-deploy --python 3.11
-CYCLONEDDS_HOME=~/Repos/cyclonedds/install \
-  uv pip install --python .venv-deploy -e third_party/unitree_sdk2_python
-```
+They are kept separate because their torch/numpy/cyclonedds pins clash, and the
+robot side should stay small enough to also run on the Go2's onboard computer.
+Isaac Sim 5.x needs Python 3.11; the robot env uses 3.10 because `cyclonedds==0.10.2`
+only has prebuilt wheels up to 3.10, so no CycloneDDS C build is needed.
+The envs only exchange data: policies as a numpy `.npz` (`deploy/export_policy_npz.py`),
+velocity commands and camera frames over UDP (`command_bus/`).
+Don't pickle anything that crosses envs, and keep shared code 3.10-compatible.
 
 Details and the per-user DDS log-file patch: [docs/real_robot_setup.md](docs/real_robot_setup.md).
 

@@ -19,9 +19,8 @@ dependencies = [
 [project.optional-dependencies]
 deploy = [
     # Real-robot control loop (command_bus/, deploy/). Not used in practice:
-    # the robot side lives in a separate `.venv-deploy` with unitree_sdk2py
-    # installed from source (needs the CycloneDDS C library) — see README.md
-    # "Two virtual environments".
+    # the robot side lives in a separate Python 3.10 `deploy/.venv` created by
+    # scripts/install_deploy.sh — see README.md "Virtual environments".
     "unitree_sdk2py",
     "onnxruntime-gpu",
 ]

@@ -6,7 +6,7 @@ robot exactly as in training, runs the actor, and logs obs / action / target.
 Use it to check joint mapping, observation ranges and action sanity before
 the policy is ever allowed to command motors.
 
-    .venv-deploy/bin/python deploy/shadow_policy.py enxf8e43b9f046a \
+    deploy/.venv/bin/python deploy/shadow_policy.py enxf8e43b9f046a \
         --policy deploy/policies/go2_velocity.npz --cmd 0 0 0 --out shadow_log.npz
 """
 

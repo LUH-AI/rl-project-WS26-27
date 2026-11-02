@@ -2,7 +2,7 @@
 
 Never publishes anything, so it is safe in any robot pose / mode.
 
-    .venv-deploy/bin/python deploy/read_lowstate.py enxf8e43b9f046a
+    deploy/.venv/bin/python deploy/read_lowstate.py enxf8e43b9f046a
 """
 
 import sys

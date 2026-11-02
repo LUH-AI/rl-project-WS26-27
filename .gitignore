@@ -13,3 +13,4 @@ third_party/
 deploy/policies/
 deploy/plots/
 deploy*.npz
+shadow*.npz

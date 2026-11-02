@@ -125,23 +125,55 @@ def get_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--block-remote", action="store_true", help="ignore the remote during the run"
     )
+    parser.add_argument(
+        "--camera-only",
+        action="store_true",
+        help="only stream camera frames, e.g. while deploy/run_policy.py walks",
+    )
     parser.add_argument("--log", default="training/outputs/real_vla")
     return parser
+
+
+def stream_camera(camera: CameraStream, duration: float) -> None:
+    """Only send camera frames, the robot is driven by someone else."""
+    camera.start()
+    print(f"CAMERA ONLY for {duration:.0f}s", flush=True)
+    start = time.time()
+    try:
+        while time.time() - start < duration:
+            time.sleep(1.0)
+            age = time.time() - camera.last_frame_time
+            print(
+                f"t={time.time() - start:5.1f}s frames={camera.num_frames} "
+                f"cam_err={camera.num_errors}"
+                + (f"  no frame for {age:.1f}s ({camera.last_error})" if age > 1.0 else ""),
+                flush=True,
+            )
+    except KeyboardInterrupt:
+        print("Interrupted.")
+    finally:
+        camera.stop()
+        print(f"Done! Sent {camera.num_frames} frames")
 
 
 def main() -> None:
     args = get_parser().parse_args()
 
     # Make log dir
-    run_name = time.strftime("%Y%m%d-%H%M%S") + ("-live" if args.live else "-dry")
+    mode = "camera" if args.camera_only else "live" if args.live else "dry"
+    run_name = time.strftime("%Y%m%d-%H%M%S") + "-" + mode
     run_dir = os.path.join(args.log, run_name)
     os.makedirs(os.path.join(run_dir, "frames"), exist_ok=True)
     log_file = open(os.path.join(run_dir, "commands.jsonl"), "w")
 
     # Connect to robot
     ChannelFactoryInitialize(0, args.iface)
-    robot = RobotState()
     camera = CameraStream(os.path.join(run_dir, "frames"))
+    if args.camera_only:
+        log_file.close()
+        stream_camera(camera, args.duration)
+        return
+    robot = RobotState()
     sport = SportClient()
     sport.SetTimeout(10.0)
     sport.Init()
