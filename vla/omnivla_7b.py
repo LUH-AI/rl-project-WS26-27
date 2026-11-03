@@ -1,4 +1,4 @@
-"""OmniVLA 7B node."""
+"""OmniVLA 7B, run with python -m vla.omnivla_7b."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from highlevel.omnivla_edge_node import (
+from vla.node import (
     OMNIVLA_DIR,
     WAYPOINT_SCALE,
     get_parser,

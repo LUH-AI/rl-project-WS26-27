@@ -1,16 +1,11 @@
 .venv/
-.venv-deploy/
 __pycache__/
 *.pyc
 *.egg-info/
 outputs/
 logs/
-runs/
-*.onnx
-.isaac-sim/
 third_party/
 
 deploy/policies/
 deploy/plots/
-deploy*.npz
-shadow*.npz
+/*.npz

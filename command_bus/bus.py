@@ -1,16 +1,14 @@
-"""Velocity command bus with source arbitration."""
+"""Velocity command bus: senders publish over UDP, the robot side reads the newest fresh command."""
 
 from __future__ import annotations
 
 import json
+import math
 import socket
 import time
 from dataclasses import asdict, dataclass
 
 DEFAULT_ADDR = ("127.0.0.1", 15555)
-
-# Lower number = higher priority. Unknown sources rank below everything.
-PRIORITY = {"rc": 0, "highlevel": 10, "script": 20}
 
 
 @dataclass
@@ -18,7 +16,7 @@ class VelocityCommand:
     vx: float = 0.0
     vy: float = 0.0
     yaw_rate: float = 0.0
-    source: str = "script"
+    source: str = "unknown"
     stamp: float = 0.0
 
 
@@ -36,13 +34,13 @@ class CommandPublisher:
         self.send(0.0, 0.0, 0.0)
 
 
-class CommandArbiter:
+class CommandSubscriber:
     def __init__(self, addr: tuple[str, int] = DEFAULT_ADDR, timeout: float = 0.5):
         self.timeout = timeout
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(addr)
         self.sock.setblocking(False)
-        self.latest: dict[str, VelocityCommand] = {}
+        self.latest = VelocityCommand(source="none")
 
     def _drain(self) -> None:
         while True:
@@ -52,26 +50,29 @@ class CommandArbiter:
                 return
             try:
                 cmd = VelocityCommand(**json.loads(data))
+                values = (cmd.vx, cmd.vy, cmd.yaw_rate, cmd.stamp)
+                # Drop NaN/inf (json allows them) and non-numbers; the last good command then times out
+                if not all(math.isfinite(v) for v in values):
+                    continue
             except (ValueError, TypeError):
                 continue
-            # Use our own clock in case sender clocks differ
-            cmd.stamp = time.time()
-            self.latest[cmd.source] = cmd
+            # Keep the sender's stamp (same machine, same clock), so a command that
+            # waited in the socket buffer, e.g. from a crashed VLA, counts as stale
+            self.latest = cmd
 
     def get(self) -> VelocityCommand:
-        """Get the highest priority fresh command."""
+        """Get the newest command, or a zero command if it is older than the timeout."""
         self._drain()
         now = time.time()
-        fresh = [cmd for cmd in self.latest.values() if now - cmd.stamp <= self.timeout]
-        if not fresh:
+        if abs(now - self.latest.stamp) > self.timeout:  # abs: a future stamp is invalid too
             return VelocityCommand(source="none", stamp=now)
-        return min(fresh, key=lambda cmd: PRIORITY.get(cmd.source, 100))
+        return self.latest
 
 
 if __name__ == "__main__":
-    arbiter = CommandArbiter()
+    subscriber = CommandSubscriber()
     while True:
-        cmd = arbiter.get()
+        cmd = subscriber.get()
         print(
             f"\r{cmd.source:>10}  vx={cmd.vx:+.2f} vy={cmd.vy:+.2f} wz={cmd.yaw_rate:+.2f}",
             end="",

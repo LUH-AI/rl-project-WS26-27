@@ -30,9 +30,9 @@ parser.add_argument("--steps", type=int, default=400)
 parser.add_argument("--out", type=str, default="training/outputs/rollout.npz")
 parser.add_argument("--seed", type=int, default=0)
 parser.add_argument("--cmd", type=float, nargs=3, default=None, metavar=("VX", "VY", "WZ"),
-                    help="fix the velocity command (e.g. 0 0 0 to compare with real shadow-mode logs)")
+                    help="fix the velocity command (e.g. 0 0 0 to compare with real dry-run logs)")
 parser.add_argument("--cmd_log", type=str, default=None,
-                    help="replay the vx/wz commands of a deploy/go2_vla_bridge.py commands.jsonl")
+                    help="replay the vx/wz commands of a deploy/vla_bridge.py commands.jsonl")
 cli_args.add_rsl_rl_args(parser)
 AppLauncher.add_app_launcher_args(parser)
 args_cli, _ = parser.parse_known_args()

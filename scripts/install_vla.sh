@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 OMNIVLA_DIR=third_party/OmniVLA
-VENV=highlevel/.venv
+VENV=vla/.venv
 
 if [ ! -d "$OMNIVLA_DIR" ]; then
     git clone https://github.com/NHirose/OmniVLA "$OMNIVLA_DIR"

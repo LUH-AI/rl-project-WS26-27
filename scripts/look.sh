@@ -6,4 +6,4 @@ cd "$(dirname "$0")/.."
 
 view=training/outputs/frames/view.jpg
 deploy/.venv/bin/python deploy/grab_frame.py --out "$view" >/dev/null
-highlevel/.venv/bin/python -m highlevel.detect_objects "$view" --out "$view" "$@" 2>/dev/null
+vla/.venv/bin/python -m vla.detect_objects "$view" --out "$view" "$@" 2>/dev/null

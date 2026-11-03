@@ -4,7 +4,7 @@ The .npz holds the actor MLP weights and everything needed to build
 observations / apply actions on the real robot, so the deploy side only needs
 numpy (no torch, no yaml). Run with the training env (.venv):
 
-    .venv/bin/python deploy/export_policy_npz.py \
+    .venv/bin/python deploy/export_policy.py \
         --run_dir third_party/unitree_rl_lab/logs/rsl_rl/unitree_go2_velocity/2026-09-02_14-23-20 \
         --checkpoint model_1999.pt \
         --out deploy/policies/go2_velocity.npz

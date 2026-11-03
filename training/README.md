@@ -1,44 +1,24 @@
 # training/
 
-Training itself lives in `third_party/unitree_rl_lab` (its own `rsl_rl` PPO
-configs and `scripts/rsl_rl/train.py`) — see the repo root README for setup.
-This directory holds the glue around that:
+`go2_tasks/` holds our Go2 tasks for [unitree_rl_lab](https://github.com/unitreerobotics/unitree_rl_lab).
+`scripts/install_isaaclab.sh` copies them into it. Edit them here, since `third_party/` is gitignored.
 
-- `plot_results.py` — reads an rsl_rl/tensorboard run directory and plots
-  reward, episode length, velocity-tracking error, and curriculum progress.
+| Task | Change from the stock `Unitree-Go2-Velocity` |
+|------|----------------------------------------------|
+| `Unitree-Go2-Velocity-Crawl` | one-foot-at-a-time gait reward + base height reward (0.22 m, weight −120) |
+| `Unitree-Go2-Velocity-LowHeight` | base height reward only (0.30 m) |
+| `Unitree-Go2-Velocity-Pace` | pace gait reward |
 
-  ```bash
-  python training/plot_results.py \
-    --run_dir third_party/unitree_rl_lab/logs/rsl_rl/unitree_go2_velocity/<run> \
-    --out training/outputs/training_curves.png
-  ```
+Tools for checking trained policies (`.venv` active). `training/outputs/` is gitignored.
 
-- `rollout_and_log.py` — loads a trained checkpoint, runs it headless
-  (no camera) for N steps, and logs the joint + base trajectory to `.npz`.
-  Isaac Sim's RTX camera renderer crashes in this environment (confirmed:
-  independent of sandboxing, num_envs, or --headless — reproduces with just
-  `--video` on as few as 32 envs / 3 iterations), so video isn't recorded
-  in-process; this script sidesteps that by logging state only. Run from
-  `third_party/unitree_rl_lab` so its `cli_args.py` is importable:
-
-  ```bash
-  cd third_party/unitree_rl_lab
-  python ../../training/rollout_and_log.py --task Unitree-Go2-Velocity \
-    --num_envs 1 --steps 500 --out ../../training/outputs/rollout.npz
-  ```
-
-- `render_mujoco.py` — replays a logged `.npz` trajectory kinematically in
-  MuJoCo (joint names/quaternion convention match Isaac Sim's, so no
-  reordering needed) and renders it to mp4 via MuJoCo's own offscreen
-  renderer — unaffected by the Isaac RTX bug above. Needs
-  `third_party/mujoco_go2` (mujoco_menagerie's Go2 MJCF, fetched once) and
-  `MUJOCO_GL=egl` for headless GPU rendering:
-
-  ```bash
-  MUJOCO_GL=egl python training/render_mujoco.py \
-    --trajectory training/outputs/rollout.npz \
-    --model third_party/mujoco_go2/scene.xml \
-    --out training/outputs/go2_rollout.mp4
-  ```
-
-`training/outputs/` is gitignored (large binary artifacts).
+```bash
+# training curves
+python training/plot_results.py --out training/outputs/training_curves.png \
+  --run_dir third_party/unitree_rl_lab/logs/rsl_rl/unitree_go2_velocity/<run>
+# headless rollout to .npz (Isaac's camera rendering crashes here, so state only), from third_party/unitree_rl_lab
+python ../../training/rollout_and_log.py --task Unitree-Go2-Velocity --num_envs 1 --steps 500 \
+  --out ../../training/outputs/rollout.npz
+# render the rollout in MuJoCo (needs third_party/mujoco_go2)
+MUJOCO_GL=egl python training/render_mujoco.py --trajectory training/outputs/rollout.npz \
+  --model third_party/mujoco_go2/scene.xml --out training/outputs/go2_rollout.mp4
+```

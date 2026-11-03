@@ -13,7 +13,7 @@ import time
 from unitree_sdk2py.core.channel import ChannelFactoryInitialize, ChannelSubscriber
 from unitree_sdk2py.idl.unitree_go.msg.dds_ import LowState_
 
-from go2_remote import BUTTONS, Remote
+from remote import BUTTONS, Remote
 
 latest = None
 
