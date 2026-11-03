@@ -1,10 +1,16 @@
-# Go2 VLA Navigation
+<p align="center">
+  <img src="assets/logo.png" alt="RL Project logo" width="420">
+</p>
+
+# Reinforcement Learning Project
+
+## Go2 VLA Navigation
 
 Drive the real Unitree Go2 with a text prompt like "go to the white door".
 [OmniVLA](https://github.com/NHirose/OmniVLA) picks the walking direction from the front camera,
 and either our Isaac Lab RL policy or Unitree's sport mode moves the legs.
 
-## Setup
+### Setup
 
 Hardware: a Go2 EDU with its remote, and a workstation with an NVIDIA GPU (≥20 GB for the 7B VLA),
 connected to the robot by Ethernet.
@@ -24,7 +30,7 @@ sudo ip addr add 192.168.123.51/24 dev $GO2_IFACE
 ping 192.168.123.161
 ```
 
-## 1. Test low-level commands
+### 1. Test low-level commands
 
 ```bash
 # read only: IMU, battery, joints
@@ -34,7 +40,7 @@ deploy/.venv/bin/python third_party/unitree_sdk2_python/example/go2/low_level/go
 ```
 Sport mode stays off until the robot reboots. The full bring-up log is in [deploy/real_robot_setup.md](deploy/real_robot_setup.md).
 
-## 2. Train an RL policy
+### 2. Train an RL policy
 
 Optional, the trained standard and crawl policies are in `deploy/example_policies/`. From `third_party/unitree_rl_lab` with `.venv` active (~25 min on an RTX 4090):
 ```bash
@@ -47,7 +53,7 @@ Our task configs are in `training/go2_tasks/`. Export a run for the robot from t
   --run_dir third_party/unitree_rl_lab/logs/rsl_rl/unitree_go2_velocity_crawl/<date>
 ```
 
-## 3. Deploy the VLA with the RL policy
+### 3. Deploy the VLA with the RL policy
 
 Robot lying down, floor clear, remote in hand. The VLA does not stop at the goal or avoid obstacles.
 ```bash
@@ -69,3 +75,11 @@ The robot should be standing. Drop `--live` for a dry run.
 deploy/.venv/bin/python -m deploy.vla_bridge --via sport --duration 5 --max-v 0.5 --min-v 0.35 --live
 ```
 More details and results: [deploy/real_robot_setup.md](deploy/real_robot_setup.md#vla-with-the-crawl-policy).
+
+## Contact
+
+Reinforcement Learning group, [Institute of Artificial Intelligence](https://www.ai.uni-hannover.de/en/institut/arbeitsgruppen/automl/reinforcement-learning), Leibniz Universität Hannover
+
+- [Mingxuan Che](https://www.ai.uni-hannover.de/en/institut/team-luhai/mingxuan-che): m.che@ai.uni-hannover.de
+- [Theresa Eimer](https://www.ai.uni-hannover.de/en/institut/team-luhai/eimer): t.eimer@ai.uni-hannover.de
+- [Aditya Mohan](https://www.ai.uni-hannover.de/en/institut/team-luhai/mohan): a.mohan@ai.uni-hannover.de
