@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import socket
 import time
 from dataclasses import asdict, dataclass
@@ -15,7 +16,7 @@ class VelocityCommand:
     vx: float = 0.0
     vy: float = 0.0
     yaw_rate: float = 0.0
-    source: str = "none"
+    source: str = "unknown"
     stamp: float = 0.0
 
 
@@ -49,17 +50,21 @@ class CommandSubscriber:
                 return
             try:
                 cmd = VelocityCommand(**json.loads(data))
+                values = (cmd.vx, cmd.vy, cmd.yaw_rate, cmd.stamp)
+                # Drop NaN/inf (json allows them) and non-numbers; the last good command then times out
+                if not all(math.isfinite(v) for v in values):
+                    continue
             except (ValueError, TypeError):
                 continue
-            # Use our own clock in case sender clocks differ
-            cmd.stamp = time.time()
+            # Keep the sender's stamp (same machine, same clock), so a command that
+            # waited in the socket buffer, e.g. from a crashed VLA, counts as stale
             self.latest = cmd
 
     def get(self) -> VelocityCommand:
         """Get the newest command, or a zero command if it is older than the timeout."""
         self._drain()
         now = time.time()
-        if now - self.latest.stamp > self.timeout:
+        if abs(now - self.latest.stamp) > self.timeout:  # abs: a future stamp is invalid too
             return VelocityCommand(source="none", stamp=now)
         return self.latest
 
