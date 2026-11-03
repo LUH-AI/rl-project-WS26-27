@@ -9,6 +9,17 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 RL_LAB=third_party/unitree_rl_lab
 UNITREE_ROS=third_party/unitree_ros
+# Upstream commits our tasks and example policies were trained with
+RL_LAB_COMMIT=4960b84732b0c2ec593dccbfe963fda1bcd7b1e3
+UNITREE_ROS_COMMIT=25746e8c73f097c3b32bed7b6c16d4e195dfacd8
+
+# clone_at <url> <dir> <commit>: shallow clone of one commit, skipped if <dir> exists
+clone_at() {
+    [ -d "$2" ] && return
+    git init -q "$2"
+    git -C "$2" fetch -q --depth 1 "$1" "$3"
+    git -C "$2" checkout -q FETCH_HEAD
+}
 
 if [ ! -d .venv ]; then
     uv venv --python 3.11.16 --seed .venv
@@ -27,8 +38,8 @@ uv pip install "isaaclab[isaacsim,all]==2.3.2.post1" --extra-index-url https://p
 echo "Yes" | python -c "import isaaclab"
 
 # unitree_rl_lab, our task configs, and the Go2 URDF from unitree_ros
-[ -d "$RL_LAB" ] || git clone https://github.com/unitreerobotics/unitree_rl_lab "$RL_LAB"
-[ -d "$UNITREE_ROS" ] || git clone --depth 1 https://github.com/unitreerobotics/unitree_ros "$UNITREE_ROS"
+clone_at https://github.com/unitreerobotics/unitree_rl_lab "$RL_LAB" "$RL_LAB_COMMIT"
+clone_at https://github.com/unitreerobotics/unitree_ros "$UNITREE_ROS" "$UNITREE_ROS_COMMIT"
 cp training/go2_tasks/*.py "$RL_LAB/source/unitree_rl_lab/unitree_rl_lab/tasks/locomotion/robots/go2/"
 # Spawn the Go2 from the unitree_ros URDF instead of the separately downloaded USD
 python - "$RL_LAB/source/unitree_rl_lab/unitree_rl_lab/assets/robots/unitree.py" "$PWD/$UNITREE_ROS" <<'EOF'
@@ -51,6 +62,7 @@ elif urdf not in src:
     sys.exit(f"Could not switch the Go2 spawn to URDF in {path}, edit it by hand")
 open(path, "w").write(src)
 EOF
-(cd "$RL_LAB" && ./unitree_rl_lab.sh -i)
+
+uv pip install -e "$RL_LAB/source/unitree_rl_lab"
 
 echo "Done. Verify with: isaacsim"
