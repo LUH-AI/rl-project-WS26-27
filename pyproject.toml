@@ -1,12 +1,29 @@
+# Training env (.venv), installed by scripts/install_isaaclab.sh.
+# The robot and VLA envs have their own deploy/pyproject.toml and vla/pyproject.toml.
 [project]
 name = "go2-rl"
 version = "0.1.0"
 description = "Go2 VLA navigation with Isaac Lab RL policies"
 readme = "README.md"
-requires-python = ">=3.11,<3.12"
-# Training env (.venv) only. Isaac Lab comes from NVIDIA's pip index,
-# installed by scripts/install_isaaclab.sh: isaaclab[isaacsim,all]==2.3.2.post1
-dependencies = []
+# Isaac Sim 5.x needs Python 3.11
+requires-python = "==3.11.*"
+dependencies = [
+    # pulls torch 2.7.0+cu126, rsl-rl-lib, gymnasium, tensorboard
+    "isaaclab[isaacsim,all]==2.3.2.post1",
+    "unitree_rl_lab",
+    "matplotlib==3.10.3",
+    "mujoco==3.12.0",
+]
 
 [tool.uv]
 package = false
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+# Warp version Isaac Lab was tested with here (not pinned by isaaclab)
+constraint-dependencies = ["warp-lang==1.17.0"]
+
+[tool.uv.sources]
+unitree_rl_lab = { path = "third_party/unitree_rl_lab/source/unitree_rl_lab", editable = true }
+
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"

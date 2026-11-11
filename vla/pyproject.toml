@@ -1,0 +1,26 @@
+# VLA env (vla/.venv), installed by scripts/install_vla.sh
+[project]
+name = "go2-vla"
+version = "0.1.0"
+requires-python = "==3.10.*"
+dependencies = [
+    "omnivla",
+    "torch==2.2.0",
+    "torchvision==0.17.0",
+    "torchaudio==2.2.0",
+    "numpy==1.26.4",
+    # openai-clip still needs pkg_resources
+    "setuptools==80.10.2",
+    # TF 2.15 needs protobuf 4
+    "tensorflow-metadata==1.16.1",
+    # newer wandb needs protobuf 5
+    "wandb==0.28.0",
+]
+
+[tool.uv]
+package = false
+environments = ["sys_platform == 'linux' and platform_machine == 'x86_64'"]
+override-dependencies = ["protobuf==4.25.9"]
+
+[tool.uv.sources]
+omnivla = { path = "../third_party/OmniVLA", editable = true }

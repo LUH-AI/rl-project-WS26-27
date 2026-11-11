@@ -1,0 +1,20 @@
+# Robot env (deploy/.venv), installed by scripts/install_deploy.sh
+[project]
+name = "go2-deploy"
+version = "0.1.0"
+# cyclonedds 0.10.2 only has prebuilt wheels up to Python 3.10
+requires-python = "==3.10.*"
+dependencies = [
+    "unitree_sdk2py",
+    "cyclonedds==0.10.2",
+    "numpy==2.2.6",
+    "opencv-python-headless==5.0.0.93",
+    "pillow==12.3.0",
+]
+
+[tool.uv]
+package = false
+environments = ["sys_platform == 'linux'"]
+
+[tool.uv.sources]
+unitree_sdk2py = { path = "../third_party/unitree_sdk2_python", editable = true }

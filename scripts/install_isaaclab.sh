@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Install Isaac Sim + Isaac Lab into .venv, plus unitree_rl_lab with our Go2 tasks.
-# Re-run to repair/update.
+# Versions come from pyproject.toml and uv.lock. Re-run to repair/update.
 #
-# Requires: an NVIDIA GPU + driver, ~20GB free disk, Python 3.11 (pinned in
-# pyproject.toml since Isaac Sim 5.x requires it).
+# Requires: an NVIDIA GPU + driver, ~20GB free disk.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -21,28 +20,12 @@ clone_at() {
     git -C "$2" checkout -q FETCH_HEAD
 }
 
-if [ ! -d .venv ]; then
-    uv venv --python 3.11.16 --seed .venv
-fi
-source .venv/bin/activate
-
-# Isaac Sim + Isaac Lab from NVIDIA's pip index. This alone pulls the
-# correctly matched torch/torchvision/rsl-rl/gymnasium/tensorboard versions
-# for Isaac Sim 5.x, so nothing else needs installing separately first.
-# Version pinned to match unitree_rl_lab's tested Isaac Lab 2.3.x / Isaac
-# Sim 5.x requirement.
-uv pip install "isaaclab[isaacsim,all]==2.3.2.post1" --extra-index-url https://pypi.nvidia.com
-
-# First import triggers an interactive Omniverse Kit EULA prompt; accept it
-# once here so later runs (including headless training) don't block on it.
-echo "Yes" | python -c "import isaaclab"
-
 # unitree_rl_lab, our task configs, and the Go2 URDF from unitree_ros
 clone_at https://github.com/unitreerobotics/unitree_rl_lab "$RL_LAB" "$RL_LAB_COMMIT"
 clone_at https://github.com/unitreerobotics/unitree_ros "$UNITREE_ROS" "$UNITREE_ROS_COMMIT"
 cp training/go2_tasks/*.py "$RL_LAB/source/unitree_rl_lab/unitree_rl_lab/tasks/locomotion/robots/go2/"
 # Spawn the Go2 from the unitree_ros URDF instead of the separately downloaded USD
-python - "$RL_LAB/source/unitree_rl_lab/unitree_rl_lab/assets/robots/unitree.py" "$PWD/$UNITREE_ROS" <<'EOF'
+python3 - "$RL_LAB/source/unitree_rl_lab/unitree_rl_lab/assets/robots/unitree.py" "$PWD/$UNITREE_ROS" <<'EOF'
 import sys
 path, ros_dir = sys.argv[1:]
 src = open(path).read()
@@ -63,6 +46,10 @@ elif urdf not in src:
 open(path, "w").write(src)
 EOF
 
-uv pip install -e "$RL_LAB/source/unitree_rl_lab"
+uv sync --locked
+
+# First import triggers an interactive Omniverse Kit EULA prompt; accept it
+# once here so later runs (including headless training) don't block on it.
+echo "Yes" | .venv/bin/python -c "import isaaclab"
 
 echo "Done. Verify with: isaacsim"

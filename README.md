@@ -17,6 +17,7 @@ connected to the robot by Ethernet.
 
 Software: three [uv](https://docs.astral.sh/uv/) venvs, kept separate because their dependencies clash.
 They exchange policies as `.npz` files and commands/camera frames over local UDP (`command_bus/`).
+Each venv's versions are pinned in its `pyproject.toml` and `uv.lock` (root, `deploy/`, `vla/`), together with the commits of the `third_party/` repos in the install scripts.
 ```bash
 ./scripts/install_deploy.sh        # deploy/.venv: talks to the robot (unitree_sdk2_python)
 ./scripts/install_vla.sh --full    # vla/.venv: OmniVLA (without --full only the edge model)
