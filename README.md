@@ -24,10 +24,15 @@ Each venv's versions are pinned in its `pyproject.toml` and `uv.lock` (root, `de
 ./scripts/install_isaaclab.sh      # .venv: Isaac Lab + unitree_rl_lab, only for training
 ```
 
-Network:
+Network (optional if the interface already has the address, which is the normal case on the lab workstations):
 ```bash
 export GO2_IFACE=enxf8e43b9f046a   # see ip -br link
+ip -br addr show $GO2_IFACE        # if 192.168.123.51/24 is listed, skip the next line
 sudo ip addr add 192.168.123.51/24 dev $GO2_IFACE
+```
+
+Check the connection to the robot:
+```bash
 ping 192.168.123.161
 ```
 
@@ -76,6 +81,29 @@ The robot should be standing. Drop `--live` for a dry run.
 deploy/.venv/bin/python -m deploy.vla_bridge --via sport --duration 5 --max-v 0.5 --min-v 0.35 --live
 ```
 More details and results: [deploy/real_robot_setup.md](deploy/real_robot_setup.md#vla-with-the-crawl-policy).
+
+## Sync with the course repo
+
+Keep `main` the same as the course `main`. Do not commit or merge your own work into `main`.
+Put team work on another branch (for example `dev`) and open your PRs into that branch.
+Do not rebase or force-push.
+```bash
+# one time
+git remote add upstream https://github.com/LUH-AI/rl-project-WS26-27.git  # add the course repo as "upstream"
+git remote set-url --push upstream DISABLE                                 # block pushes to the course repo
+
+# each sync (commit or stash your work first)
+git fetch upstream                   # download the latest course commits
+git switch main                      # go to your main
+git merge --ff-only upstream/main    # move main to the course main (stops if main has own commits)
+git push origin main                 # upload the updated main to your team repo
+
+# bring the updates into your team branch
+git switch dev && git pull           # your team branch, up to date
+git merge main                       # add the course updates (fix conflicts if any)
+git push origin dev                  # upload the merged team branch
+```
+Then run the install scripts again. If `--ff-only` fails, `main` has commits that are not from the course. Ask the tutors.
 
 ## Contact
 
