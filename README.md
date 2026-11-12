@@ -82,6 +82,29 @@ deploy/.venv/bin/python -m deploy.vla_bridge --via sport --duration 5 --max-v 0.
 ```
 More details and results: [deploy/real_robot_setup.md](deploy/real_robot_setup.md#vla-with-the-crawl-policy).
 
+## Sync with the course repo
+
+Keep `main` the same as the course `main`. Do not commit or merge your own work into `main`.
+Put team work on another branch (for example `dev`) and open your PRs into that branch.
+Do not rebase or force-push.
+```bash
+# one time
+git remote add upstream https://github.com/LUH-AI/rl-project-WS26-27.git  # add the course repo as "upstream"
+git remote set-url --push upstream DISABLE                                 # block pushes to the course repo
+
+# each sync (commit or stash your work first)
+git fetch upstream                   # download the latest course commits
+git switch main                      # go to your main
+git merge --ff-only upstream/main    # move main to the course main (stops if main has own commits)
+git push origin main                 # upload the updated main to your team repo
+
+# bring the updates into your team branch
+git switch dev && git pull           # your team branch, up to date
+git merge main                       # add the course updates (fix conflicts if any)
+git push origin dev                  # upload the merged team branch
+```
+Then run the install scripts again. If `--ff-only` fails, `main` has commits that are not from the course. Ask the tutors.
+
 ## Contact
 
 Reinforcement Learning group, [Institute of Artificial Intelligence](https://www.ai.uni-hannover.de/en/institut/arbeitsgruppen/automl/reinforcement-learning), Leibniz Universität Hannover
