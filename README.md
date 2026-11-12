@@ -24,10 +24,15 @@ Each venv's versions are pinned in its `pyproject.toml` and `uv.lock` (root, `de
 ./scripts/install_isaaclab.sh      # .venv: Isaac Lab + unitree_rl_lab, only for training
 ```
 
-Network:
+Network (optional if the interface already has the address, which is the normal case on the lab workstations):
 ```bash
 export GO2_IFACE=enxf8e43b9f046a   # see ip -br link
+ip -br addr show $GO2_IFACE        # if 192.168.123.51/24 is listed, skip the next line
 sudo ip addr add 192.168.123.51/24 dev $GO2_IFACE
+```
+
+Check the connection to the robot:
+```bash
 ping 192.168.123.161
 ```
 

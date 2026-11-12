@@ -16,7 +16,9 @@ the deploy state machine and the two example policies.
   -            <OutputFile>/tmp/cdds.LOG</OutputFile>
   +            <OutputFile>/tmp/cdds_${USER}.LOG</OutputFile>
   ```
-- Network: workstation `192.168.123.51/24`, robot `192.168.123.161`.
+- Network: workstation `192.168.123.51/24`, robot `192.168.123.161`. The lab workstations
+  normally have this address already. Check with `ip -br addr show $GO2_IFACE` before you
+  run `ip addr add`. That command needs `sudo`.
 
 ## Bring-up steps
 
