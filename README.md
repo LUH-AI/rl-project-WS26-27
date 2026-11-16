@@ -24,11 +24,21 @@ Each venv's versions are pinned in its `pyproject.toml` and `uv.lock` (root, `de
 ./scripts/install_isaaclab.sh      # .venv: Isaac Lab + unitree_rl_lab, only for training
 ```
 
-Network:
+### 0. Connect to the robot
+
+Find the Ethernet interface connected to the robot with `ip -br link` (here `enxf8e43b9f046a`).
+Set it in **every terminal** that talks to the robot (steps 1 and 3, `look.sh`). The commands below read `GO2_IFACE`:
 ```bash
-export GO2_IFACE=enxf8e43b9f046a   # see ip -br link
+export GO2_IFACE=enxf8e43b9f046a
+```
+Check the link:
+```bash
+ip -br addr show $GO2_IFACE   # should list a 192.168.123.x address
+ping 192.168.123.161          # the robot
+```
+Optional, needs sudo: only if no `192.168.123.x` address is listed, add one (lost on reboot, ask an admin to make it permanent):
+```bash
 sudo ip addr add 192.168.123.51/24 dev $GO2_IFACE
-ping 192.168.123.161
 ```
 
 ### 1. Test low-level commands
@@ -57,6 +67,7 @@ Our task configs are in `training/go2_tasks/`. Export a run for the robot from t
 ### 3. Deploy the VLA with the RL policy
 
 Robot lying down, floor clear, remote in hand. The VLA does not stop at the goal or avoid obstacles.
+Terminals 1 and 2 need `GO2_IFACE` (step 0).
 ```bash
 # Terminal 1: camera stream for the VLA
 deploy/.venv/bin/python -m deploy.vla_bridge --camera-only --duration 600
@@ -71,7 +82,7 @@ vla/.venv/bin/python -m vla.omnivla_7b --prompt "go to the wooden pallet" --max-
 * `./scripts/look.sh` shows which objects the robot sees. Use those in prompts.
 
 To use sport mode instead of the RL policy, keep the VLA (terminal 3) running and replace terminals 1 and 2 with this.
-The robot should be standing. Drop `--live` for a dry run.
+The robot should be standing, and `GO2_IFACE` set. Drop `--live` for a dry run.
 ```bash
 deploy/.venv/bin/python -m deploy.vla_bridge --via sport --duration 5 --max-v 0.5 --min-v 0.35 --live
 ```

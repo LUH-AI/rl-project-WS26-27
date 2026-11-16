@@ -16,11 +16,11 @@ Setup and bring-up log: [`real_robot_setup.md`](real_robot_setup.md).
 | `vla_bridge.py` | `deploy/.venv` | Streams the camera to the VLA and drives sport mode with its commands; `--camera-only` just streams while `run_policy.py --cmd_source bus` walks. Run as `python -m deploy.vla_bridge`. |
 | `plot_deploy.py` | `.venv` | Plots a `run_policy.py` log (base state, joints vs targets, optional real-vs-sim). |
 
-Quick start (robot lying down, interface `enxf8e43b9f046a`):
+Quick start (robot lying down, `GO2_IFACE` set as in the root README):
 
 ```bash
 .venv/bin/python deploy/export_policy.py --run_dir <rsl_rl run dir> --out deploy/policies/my_policy.npz
-deploy/.venv/bin/python deploy/run_policy.py enxf8e43b9f046a --policy deploy/policies/my_policy.npz
+deploy/.venv/bin/python deploy/run_policy.py $GO2_IFACE --policy deploy/policies/my_policy.npz
 # keys (+Enter): s = stand, p = policy, l = lie down, d = emergency damp, q = quit
 .venv/bin/python deploy/plot_deploy.py --real deploy_log.npz --out_prefix deploy/plots/run
 ```
