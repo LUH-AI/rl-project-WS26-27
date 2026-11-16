@@ -1,4 +1,4 @@
-"""OmniVLA-edge, run with python -m vla.omnivla_edge."""
+"""OmniVLA-edge model, run with python -m vla."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from vla.node import OMNIVLA_DIR, WAYPOINT_SCALE, get_parser, run_node
+from vla.node import OMNIVLA_DIR, WAYPOINT_SCALE
 
 sys.path[:0] = [OMNIVLA_DIR, os.path.join(OMNIVLA_DIR, "inference")]
 
@@ -92,16 +92,3 @@ class OmniVLAEdge:
         waypoints[:, :2] *= WAYPOINT_SCALE
         return waypoints
 
-
-def main() -> None:
-    args = get_parser().parse_args()
-    if not torch.cuda.is_available():
-        sys.exit("OmniVLA-edge needs a CUDA GPU.")
-    device = torch.device("cuda:0")
-    vla = OmniVLAEdge(args.prompt, device)
-    print(f"OmniVLA-edge on {device}, prompt={args.prompt!r}", flush=True)
-    run_node(vla, args)
-
-
-if __name__ == "__main__":
-    main()

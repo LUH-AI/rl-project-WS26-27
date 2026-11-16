@@ -11,16 +11,17 @@ Setup and bring-up log: [`real_robot_setup.md`](real_robot_setup.md).
 | `policy.py` | – | Library: builds the 45-dim observation from `LowState_` and runs the MLP; handles Isaac ↔ SDK joint order. |
 | `remote.py` | – | Library: parses the wireless remote (buttons, sticks) from `LowState_.wireless_remote`. |
 | `read_lowstate.py` | `deploy/.venv` | Read-only connectivity check: prints IMU, battery and joint states. |
+| `sport_mode.py` | `deploy/.venv` | Shows the robot's motion mode; `--on` switches sport mode back on after a low-level run, no reboot needed. |
 | `read_remote.py` | `deploy/.venv` | Read-only check of the remote button/stick mapping (run with sport mode off). |
 | `run_policy.py` | `deploy/.venv` | Closed-loop deployment: PASSIVE → STAND → POLICY → SIT state machine at 500 Hz (policy 50 Hz), remote/keyboard control, safety stops, `--dry_run`, `--cmd_source bus` for VLA commands. |
 | `vla_bridge.py` | `deploy/.venv` | Streams the camera to the VLA and drives sport mode with its commands; `--camera-only` just streams while `run_policy.py --cmd_source bus` walks. Run as `python -m deploy.vla_bridge`. |
 | `plot_deploy.py` | `.venv` | Plots a `run_policy.py` log (base state, joints vs targets, optional real-vs-sim). |
 
-Quick start (robot lying down, interface `enxf8e43b9f046a`):
+Quick start (robot lying down, `GO2_IFACE` set as in the root README):
 
 ```bash
 .venv/bin/python deploy/export_policy.py --run_dir <rsl_rl run dir> --out deploy/policies/my_policy.npz
-deploy/.venv/bin/python deploy/run_policy.py enxf8e43b9f046a --policy deploy/policies/my_policy.npz
+deploy/.venv/bin/python deploy/run_policy.py $GO2_IFACE --policy deploy/policies/my_policy.npz
 # keys (+Enter): s = stand, p = policy, l = lie down, d = emergency damp, q = quit
 .venv/bin/python deploy/plot_deploy.py --real deploy_log.npz --out_prefix deploy/plots/run
 ```

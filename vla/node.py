@@ -106,6 +106,12 @@ def run_node(vla, args: argparse.Namespace) -> None:
 
 def get_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--model",
+        choices=["edge", "full"],
+        default="edge",
+        help="edge: small, any GPU; full: 7B, follows prompts better, needs ~20 GB GPU memory",
+    )
     parser.add_argument("--prompt", default="move toward the door")
     parser.add_argument("--image", help="still image instead of the camera")
     parser.add_argument("--once", action="store_true", help="run once and exit")

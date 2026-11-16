@@ -14,8 +14,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--iface",
-        default=os.environ.get("GO2_IFACE", "enxf8e43b9f046a"),
-        help="network interface connected to the robot",
+        default=os.environ.get("GO2_IFACE"),
+        required="GO2_IFACE" not in os.environ,
+        help="network interface connected to the robot (default: $GO2_IFACE)",
     )
     parser.add_argument(
         "--out",
