@@ -29,17 +29,17 @@ Each venv's versions are pinned in its `pyproject.toml` and `uv.lock` (root, `de
 ```
 
 Shared workstation: `/tmp` is shared by all accounts, and some tools write to fixed paths there.
-The first user to create one owns it, and everyone else gets `PermissionError: [Errno 13]`.
-* Isaac Lab writes its log to `$TMPDIR/isaaclab/logs` (default `/tmp`). Before training, point `TMPDIR` at a folder only you can read
+The first user to create one owns it, and everyone else gets permission errors:
+- Isaac Lab writes its log to `$TMPDIR/isaaclab/logs` (default `/tmp`). Before training, point `TMPDIR` at a folder only you can read
   (add the `export` line to `~/.bashrc` to keep it):
   ```bash
   mkdir -p -m 700 ~/tmp   # once
   export TMPDIR=~/tmp
   ```
-* The Go2 URDF is converted to USD in `$TMPDIR/IsaacLab_$USER/go2_usd`. `install_isaaclab.sh` sets this up.
+- The Go2 URDF is converted to USD in `$TMPDIR/IsaacLab_$USER/go2_usd`. `install_isaaclab.sh` sets this up.
   If training fails on `/tmp/IsaacLab`, run the install script again.
-* The robot SDK writes its DDS log to `/tmp/cdds.LOG`. See [deploy/real_robot_setup.md](deploy/real_robot_setup.md#setup-notes) for the fix.
-* The command bus uses the fixed local UDP ports 15555 and 15556 (`command_bus/`), so only one user at a time can run step 3.
+- The robot SDK writes its DDS log to `/tmp/cdds.LOG` by default. `install_deploy.sh` changes it to `$TMPDIR/cdds_$USER.LOG` (or `/tmp/cdds_$USER.LOG` without `TMPDIR`). If you get `channel factory init error`, run the install script again.
+- The command bus uses the fixed local UDP ports 15555 and 15556 (`command_bus/`), so only one user at a time can run step 3.
 
 ### 0. Connect to the robot
 

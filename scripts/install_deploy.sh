@@ -12,6 +12,10 @@ if [ ! -d "$SDK_DIR" ]; then
     git -C "$SDK_DIR" fetch -q --depth 1 https://github.com/unitreerobotics/unitree_sdk2_python "$SDK_COMMIT"
     git -C "$SDK_DIR" checkout -q FETCH_HEAD
 fi
+# Per-user DDS log in $TMPDIR (or /tmp): /tmp/cdds.LOG is owned by whoever ran the SDK
+# first on a shared machine, and then ChannelFactoryInitialize fails for everyone else.
+# CycloneDDS expands the ${...} itself. Also updates the older /tmp/cdds_${USER}.LOG patch.
+sed -i 's#/tmp/cdds\(_${USER}\)\?\.LOG#${TMPDIR:-/tmp}/cdds_${USER}.LOG#' "$SDK_DIR/unitree_sdk2py/core/channel_config.py"
 uv sync --locked --project deploy
 
 echo "Done!"
