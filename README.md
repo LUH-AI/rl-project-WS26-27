@@ -16,12 +16,8 @@ and either our Isaac Lab RL policy or Unitree's sport mode moves the legs.
 Hardware: a Go2 EDU with its remote, and a workstation with an NVIDIA GPU (≥20 GB only for the optional full VLA),
 connected to the robot by Ethernet.
 
-GitHub access: log in once with the [GitHub CLI](https://cli.github.com/) over HTTPS, so git can clone and push without a password
-([details](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github#https)):
-```bash
-gh auth login        # GitHub.com → HTTPS → yes, authenticate Git → log in with a web browser
-gh repo clone LUH-AI/rl-project-WS26-27 && cd rl-project-WS26-27
-```
+GitHub access: log in once with the [GitHub CLI](https://cli.github.com/) over HTTPS, so git can clone and push
+([details](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github#https)).
 
 Software: three [uv](https://docs.astral.sh/uv/) venvs, kept separate because their dependencies clash.
 They exchange policies as `.npz` files and commands/camera frames over local UDP (`command_bus/`).
@@ -125,6 +121,20 @@ The robot should be standing in sport mode (if it is off, run `deploy/sport_mode
 deploy/.venv/bin/python -m deploy.vla_bridge --via sport --duration 5 --max-v 0.5 --min-v 0.35 --live
 ```
 More details and results: [deploy/real_robot_setup.md](deploy/real_robot_setup.md#vla-with-the-crawl-policy).
+
+## Pull and push with gh
+
+SSH (port 22) is blocked on the lab network, so use HTTPS with the GitHub CLI:
+```bash
+gh auth login                        # GitHub.com, HTTPS, log in with a browser
+gh auth setup-git                    # git uses the gh login for HTTPS
+git remote set-url origin https://github.com/<team>/<repo>.git  # only if origin starts with git@
+git switch dev                       # work on your team branch, never on main
+git pull                             # download new commits
+git push origin dev                  # upload your commits to dev, not main
+gh auth logout                       # when you leave, the workstation is shared
+```
+Only push `main` when syncing with the course repo (next section).
 
 ## Sync with the course repo
 
