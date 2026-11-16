@@ -9,12 +9,11 @@ the deploy state machine and the two example policies.
   only has prebuilt wheels up to 3.10. Newer Pythons need the CycloneDDS C library.
 - Don't source `/opt/ros/*/setup.bash` in the robot shell, ROS 2 brings its own CycloneDDS.
 - Shared machine: the SDK writes its DDS log to `/tmp/cdds.LOG`. If another user owns it,
-  `ChannelFactoryInitialize` fails with `channel factory init error`. Fix in
-  `third_party/unitree_sdk2_python/unitree_sdk2py/core/channel_config.py`
-  (re-apply after re-cloning the SDK):
+  `ChannelFactoryInitialize` fails with `channel factory init error`. `scripts/install_deploy.sh`
+  applies this fix to `third_party/unitree_sdk2_python/unitree_sdk2py/core/channel_config.py`:
   ```diff
   -            <OutputFile>/tmp/cdds.LOG</OutputFile>
-  +            <OutputFile>/tmp/cdds_${USER}.LOG</OutputFile>
+  +            <OutputFile>${TMPDIR:-/tmp}/cdds_${USER}.LOG</OutputFile>
   ```
 - Network: workstation `192.168.123.51/24`, robot `192.168.123.161`. The lab workstations
   normally have this address already. Check with `ip -br addr show $GO2_IFACE` before you
