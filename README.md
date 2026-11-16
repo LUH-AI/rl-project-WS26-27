@@ -15,6 +15,13 @@ and either our Isaac Lab RL policy or Unitree's sport mode moves the legs.
 Hardware: a Go2 EDU with its remote, and a workstation with an NVIDIA GPU (≥20 GB only for the optional full VLA),
 connected to the robot by Ethernet.
 
+GitHub access: log in once with the [GitHub CLI](https://cli.github.com/) over HTTPS, so git can clone and push without a password
+([details](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github#https)):
+```bash
+gh auth login        # GitHub.com → HTTPS → yes, authenticate Git → log in with a web browser
+gh repo clone LUH-AI/rl-project-WS26-27 && cd rl-project-WS26-27
+```
+
 Software: three [uv](https://docs.astral.sh/uv/) venvs, kept separate because their dependencies clash.
 They exchange policies as `.npz` files and commands/camera frames over local UDP (`command_bus/`).
 Each venv's versions are pinned in its `pyproject.toml` and `uv.lock` (root, `deploy/`, `vla/`), together with the commits of the `third_party/` repos in the install scripts.
