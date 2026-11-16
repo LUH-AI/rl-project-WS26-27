@@ -11,6 +11,7 @@ Setup and bring-up log: [`real_robot_setup.md`](real_robot_setup.md).
 | `policy.py` | – | Library: builds the 45-dim observation from `LowState_` and runs the MLP; handles Isaac ↔ SDK joint order. |
 | `remote.py` | – | Library: parses the wireless remote (buttons, sticks) from `LowState_.wireless_remote`. |
 | `read_lowstate.py` | `deploy/.venv` | Read-only connectivity check: prints IMU, battery and joint states. |
+| `sport_mode.py` | `deploy/.venv` | Shows the robot's motion mode; `--on` switches sport mode back on after a low-level run, no reboot needed. |
 | `read_remote.py` | `deploy/.venv` | Read-only check of the remote button/stick mapping (run with sport mode off). |
 | `run_policy.py` | `deploy/.venv` | Closed-loop deployment: PASSIVE → STAND → POLICY → SIT state machine at 500 Hz (policy 50 Hz), remote/keyboard control, safety stops, `--dry_run`, `--cmd_source bus` for VLA commands. |
 | `vla_bridge.py` | `deploy/.venv` | Streams the camera to the VLA and drives sport mode with its commands; `--camera-only` just streams while `run_policy.py --cmd_source bus` walks. Run as `python -m deploy.vla_bridge`. |

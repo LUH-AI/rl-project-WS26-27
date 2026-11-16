@@ -9,6 +9,7 @@
 Drive the real Unitree Go2 with a text prompt like "go to the white door".
 [OmniVLA](https://github.com/NHirose/OmniVLA) picks the walking direction from the front camera,
 and either our Isaac Lab RL policy or Unitree's sport mode moves the legs.
+"Sport mode" is Unitree's name for the robot's built-in walking controller (active after power-on), not a high-speed mode; the speed comes from the commands, which our scripts cap.
 
 ### Setup
 
@@ -43,7 +44,7 @@ Check the link:
 ip -br addr show $GO2_IFACE   # should list a 192.168.123.x address
 ping 192.168.123.161          # the robot
 ```
-Optional, needs sudo: only if no `192.168.123.x` address is listed, add one (lost on reboot, ask an admin to make it permanent):
+**Optional, needs sudo:** only if no `192.168.123.x` address is listed, add one (lost on reboot, ask an admin to make it permanent):
 ```bash
 sudo ip addr add 192.168.123.51/24 dev $GO2_IFACE
 ```
@@ -56,7 +57,7 @@ deploy/.venv/bin/python deploy/read_lowstate.py $GO2_IFACE
 # robot lying down: releases sport mode, stands up and lies down again, Ctrl+C at the end
 deploy/.venv/bin/python third_party/unitree_sdk2_python/example/go2/low_level/go2_stand_example.py $GO2_IFACE
 ```
-Sport mode stays off until the robot reboots. The full bring-up log is in [deploy/real_robot_setup.md](deploy/real_robot_setup.md).
+Sport mode stays off afterwards. Switch it back on with `deploy/.venv/bin/python deploy/sport_mode.py --on` (the robot stands up), or reboot the robot. The full bring-up log is in [deploy/real_robot_setup.md](deploy/real_robot_setup.md).
 
 ### 2. Train an RL policy (optional)
 
@@ -88,20 +89,38 @@ Terminals 1 and 2 need `GO2_IFACE` (step 0).
 ```bash
 # Terminal 1: camera stream for the VLA
 deploy/.venv/bin/python -m deploy.vla_bridge --camera-only --duration 600
-# Terminal 2: policy. Enter releases sport mode, then s = stand, p = policy, l = lie down, d = damp (+Enter)
+# Terminal 2: RL policy. Enter releases sport mode, then use the keys below
 deploy/.venv/bin/python deploy/run_policy.py $GO2_IFACE \
   --policy deploy/example_policies/go2_crawl.npz --cmd_source bus --bus_max_v 0.5
 # Terminal 3: once in POLICY, start the VLA. Ctrl+C stops the robot
 vla/.venv/bin/python -m vla --prompt "go to the wooden pallet" --max-v 0.5 --max-w 0.5
 ```
-* `--policy` picks the RL policy: `deploy/example_policies/go2_crawl.npz` or `go2_velocity.npz`, or your own export from step 2 (`deploy/policies/my_crawl.npz`).
-* Add `--dry_run` to terminal 2 to test without moving the robot.
-* VLA model: `--model edge` (default) runs on any GPU but mostly ignores the prompt. `--model full` (7B) follows prompts and was used for our tests, but needs ~20 GB of GPU memory and `./scripts/install_vla.sh --full`.
-* The sticks override the VLA. The crawl policy barely moves below 0.5 m/s.
-* `./scripts/look.sh` shows which objects the robot sees. Use those in prompts.
+Keys for terminal 2 (type the key, then Enter) or the remote. These remote combos are ours and only work while `run_policy.py` runs, in sport mode the remote has Unitree's own bindings:
+
+| Key | Remote | Does | Works from |
+|-----|--------|------|------------|
+| `s` | L2+A | stand up to the policy's start pose (2 s) | damping, lying |
+| `p` | start | start the RL policy, it follows the VLA / sticks | standing (after the 2 s stand-up) |
+| `l` | L2+X | lie down and hold the lying pose | standing, policy |
+| `d` | L2+B | **damping**: legs go soft, the robot drops to the floor | any time |
+| `q` / Ctrl+C | – | lie down if needed, then quit | any time |
+
+> [!WARNING]
+> **If the robot is about to hit something:**
+>
+> 1. Press Ctrl+C in the VLA terminal (3). The robot stops within ~0.5 s and stands in place. Moving a stick also overrides the VLA.
+> 2. If it still moves dangerously or falls, press damping: L2+B on the remote (fastest, no Enter needed) or `d` + Enter in terminal 2. Damping drops the robot, so use it only as the last resort.
+
+Options and tips:
+
+- `--policy` picks the RL policy: `deploy/example_policies/go2_crawl.npz` or `go2_velocity.npz`, or your own export from step 2 (`deploy/policies/my_crawl.npz`).
+- Add `--dry_run` to terminal 2 to test without moving the robot.
+- VLA model: `--model edge` (default) runs on any GPU but mostly ignores the prompt. `--model full` (7B) follows prompts and was used for our tests, but needs ~20 GB of GPU memory and `./scripts/install_vla.sh --full`.
+- The sticks override the VLA. The crawl policy barely moves below 0.5 m/s.
+- `./scripts/look.sh` shows which objects the robot sees. Use those in prompts.
 
 To use sport mode instead of the RL policy, keep the VLA (terminal 3) running and replace terminals 1 and 2 with this.
-The robot should be standing, and `GO2_IFACE` set. Drop `--live` for a dry run.
+The robot should be standing in sport mode (if it is off, run `deploy/sport_mode.py --on`), and `GO2_IFACE` set. Drop `--live` for a dry run.
 ```bash
 deploy/.venv/bin/python -m deploy.vla_bridge --via sport --duration 5 --max-v 0.5 --min-v 0.35 --live
 ```

@@ -7,10 +7,12 @@ Python port of unitree_rl_lab's C++ Go2 FSM (deploy/robots/go2/config/config.yam
                                         --[start] or key 'p'-->  POLICY
   POLICY   policy at 50 Hz, kp=25, kd=0.5 (from deploy.yaml), sticks -> velocity cmd
   SIT      controlled lie-down to the folded pose (stand gains), rear legs lead so
-           the nose stays up, then PASSIVE    <--[L2+X] or key 'l' from STAND/POLICY
+           the nose stays up, then keeps holding it    --[L2+A] or key 's'-->  STAND    <--[L2+X] or key 'l' from STAND/POLICY
   any      --[L2+B] or key 'd', lowstate timeout, or tilt > 1 rad (POLICY)--> PASSIVE
 
-Quitting ('q' / Ctrl+C) from STAND or POLICY lies down through SIT first.
+Quitting ('q' / Ctrl+C) from STAND or POLICY lies down through SIT first, then
+stops sending with the robot held in the lying pose. Sport mode stays off,
+deploy/sport_mode.py --on switches it back on (the robot stands up).
 
 Motor commands are written at 500 Hz; the policy steps every 10th tick.
 
@@ -68,7 +70,11 @@ STICK_DEADZONE = 0.05
 # Fraction of the sit-down by which the rear legs are fully folded; the front
 # legs take the whole duration, so the rear touches down first (nose up).
 SIT_REAR_LEAD = 0.7
-SIT_HOLD = 0.5  # s at the folded pose before switching to damping
+# s at the folded pose before quitting stops sending commands. SIT keeps holding
+# the folded pose like Unitree's own lie-down: letting the legs go limp drops the
+# heavier front onto the nose and the front lidar. After quitting, the motors keep
+# holding the last (folded) command.
+SIT_HOLD = 0.5
 
 
 class LowStateBuffer:
@@ -177,14 +183,12 @@ class Controller:
                 return self.enter("PASSIVE", "user damp")
         if self.state in ("STAND", "POLICY") and (self.remote.combo("L2", "X") or "l" in keys):
             return self.enter("SIT", "user")
-        if self.state == "SIT" and time.time() - self.state_t0 > self.sit_time + SIT_HOLD:
-            return self.enter("PASSIVE", "sit-down finished")
         if self.state == "POLICY":
             g = self.policy.read_state(msg)["projected_gravity_b"]
             tilt = np.arccos(np.clip(-g[2], -1.0, 1.0))
             if tilt > TILT_LIMIT:
                 return self.enter("PASSIVE", f"tilt {tilt:.2f} rad > {TILT_LIMIT}")
-        if self.state == "PASSIVE" and (self.remote.combo("L2", "A") or "s" in keys):
+        if self.state in ("PASSIVE", "SIT") and (self.remote.combo("L2", "A") or "s" in keys):
             return self.enter("STAND", "user")
         if self.state == "STAND" and (self.remote.on_pressed("start") or "p" in keys):
             if time.time() - self.state_t0 < self.stand_time:
@@ -209,13 +213,17 @@ class Controller:
         self.write(q, STAND_KP, STAND_KD)
 
     def run_sit(self):
-        s = min((time.time() - self.state_t0) / self.sit_time, 1.0)
+        t = time.time() - self.state_t0
+        s = min(t / self.sit_time, 1.0)
         a = np.empty(12, dtype=np.float32)
         a[:6] = s  # front legs (FR, FL)
         a[6:] = min(s / SIT_REAR_LEAD, 1.0)  # rear legs (RR, RL)
         a = a * a * (3 - 2 * a)  # smoothstep: no velocity jump at start/end
         q = (1 - a) * self.start_q + a * FOLDED_Q
         self.write(q, STAND_KP, STAND_KD)
+
+    def sit_done(self):
+        return self.state == "SIT" and time.time() - self.state_t0 > self.sit_time + SIT_HOLD
 
     def run_policy(self):
         if self.tick % round(self.policy.step_dt / CTRL_DT) == 0:
@@ -291,6 +299,7 @@ def release_sport_mode():
     print("sport mode released")
 
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("interface")
@@ -352,18 +361,27 @@ def main():
         if ctrl.state in ("STAND", "POLICY"):
             ctrl.enter("SIT", "exit")
         try:
-            while ctrl.state == "SIT":  # still checks timeout / 'd' / L2+B
+            while ctrl.state == "SIT" and not ctrl.sit_done():  # still checks 'd' / L2+B
                 ctrl.step()
                 time.sleep(CTRL_DT)
         except KeyboardInterrupt:
             print("second Ctrl+C: skipping lie-down", flush=True)
-        if ctrl.state != "PASSIVE":
-            ctrl.enter("PASSIVE", "exit")
-        # keep damping for a moment so the robot settles before commands stop
-        t_end = time.time() + 1.0
-        while time.time() < t_end:
-            ctrl.run_passive()
-            time.sleep(CTRL_DT)
+
+        # Lying and held: stop here, the motors keep holding the folded pose.
+        # Going limp instead would drop the nose onto the front lidar.
+        if ctrl.sit_done():
+            print("stopped with the robot held in the lying pose", flush=True)
+        else:
+            if ctrl.state != "PASSIVE":
+                ctrl.enter("PASSIVE", "exit")
+            # keep damping for a moment so the robot settles before commands stop
+            t_end = time.time() + 1.0
+            while time.time() < t_end:
+                ctrl.run_passive()
+                time.sleep(CTRL_DT)
+        if not args.dry_run:
+            print("sport mode is off, switch it back on with (the robot stands up): "
+                  "deploy/.venv/bin/python deploy/sport_mode.py --on")
         np.savez(args.out, cmd_scale=args.cmd_scale, **{k: np.array(v) for k, v in ctrl.log.items()})
         print(f"saved {len(ctrl.log['t'])} policy steps to {args.out}")
 

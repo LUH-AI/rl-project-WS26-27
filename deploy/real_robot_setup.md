@@ -31,7 +31,7 @@ All passed on 2026-10-11, in this order.
 | Remote | `deploy/read_remote.py` | sport mode off | buttons and sticks parsed correctly |
 | Closed loop | `deploy/run_policy.py` | lying down, remote in hand | stable stand and walking with `--cmd_scale` 0.3 and 1.0, max tilt 6°. Plot logs with `deploy/plot_deploy.py` |
 
-Sport mode stays released after any low-level run, until the robot reboots.
+Sport mode stays off after any low-level run. `deploy/sport_mode.py --on` switches it back on without a reboot, and the robot stands up when it does.
 
 ## `run_policy.py` state machine
 
@@ -41,9 +41,9 @@ Keyboard keys need Enter.
 | State | Gains | Enter via |
 |-------|-------|-----------|
 | PASSIVE | kp 0, kd 3 (damping) | start, L2+B / `d`, lowstate timeout >0.1 s, tilt >1 rad in POLICY |
-| STAND | kp 60/80/80, kd 5/4/4, to the training default pose in 2 s | L2+A / `s` from PASSIVE |
+| STAND | kp 60/80/80, kd 5/4/4, to the training default pose in 2 s | L2+A / `s` from PASSIVE or SIT |
 | POLICY | kp 25, kd 0.5 (from `deploy.yaml`) | start / `p` from STAND |
-| SIT | kp 60/80/80, kd 5/4/4, to the lying pose in 2 s, rear legs first, then PASSIVE | L2+X / `l` from STAND or POLICY, also on `q` / Ctrl+C |
+| SIT | kp 60/80/80, kd 5/4/4, to the lying pose in 2 s, rear legs first, then keeps holding it (going limp drops the nose onto the front lidar). Quitting from here stops sending, and the motors keep holding the pose | L2+X / `l` from STAND or POLICY, also on `q` / Ctrl+C |
 
 - Sticks map to commands like in unitree_rl_lab (ly→vx, −lx→vy, −rx→wz), scaled by `--cmd_scale`
   (default 0.3 of the training range). With `--cmd_source bus` the commands come from the VLA,
