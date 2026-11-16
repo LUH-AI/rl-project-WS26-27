@@ -24,7 +24,9 @@ clone_at() {
 clone_at https://github.com/unitreerobotics/unitree_rl_lab "$RL_LAB" "$RL_LAB_COMMIT"
 clone_at https://github.com/unitreerobotics/unitree_ros "$UNITREE_ROS" "$UNITREE_ROS_COMMIT"
 cp training/go2_tasks/*.py "$RL_LAB/source/unitree_rl_lab/unitree_rl_lab/tasks/locomotion/robots/go2/"
-# Spawn the Go2 from the unitree_ros URDF instead of the separately downloaded USD
+# Spawn the Go2 from the unitree_ros URDF instead of the separately downloaded USD.
+# usd_dir: Isaac Lab would convert the URDF under the fixed /tmp/IsaacLab, which another
+# user on a shared machine may own, so convert into a per-user folder instead.
 python3 - "$RL_LAB/source/unitree_rl_lab/unitree_rl_lab/assets/robots/unitree.py" "$PWD/$UNITREE_ROS" <<'EOF'
 import sys
 path, ros_dir = sys.argv[1:]
@@ -36,11 +38,17 @@ usd = '''    # spawn=UnitreeUrdfFileCfg(
     spawn=UnitreeUsdFileCfg(
         usd_path=f"{UNITREE_MODEL_DIR}/Go2/usd/go2.usd",
     ),'''
+urdf_shared_tmp = '''    spawn=UnitreeUrdfFileCfg(
+        asset_path=f"{UNITREE_ROS_DIR}/robots/go2_description/urdf/go2_description.urdf",
+    ),'''
 urdf = '''    spawn=UnitreeUrdfFileCfg(
         asset_path=f"{UNITREE_ROS_DIR}/robots/go2_description/urdf/go2_description.urdf",
+        usd_dir=f"{os.environ.get('TMPDIR', '/tmp')}/IsaacLab_{os.environ.get('USER', 'user')}/go2_usd",
     ),'''
 if usd in src:
     src = src.replace(usd, urdf)
+elif urdf_shared_tmp in src:  # installed before the usd_dir fix
+    src = src.replace(urdf_shared_tmp, urdf)
 elif urdf not in src:
     sys.exit(f"Could not switch the Go2 spawn to URDF in {path}, edit it by hand")
 open(path, "w").write(src)
@@ -52,4 +60,4 @@ uv sync --locked
 # once here so later runs (including headless training) don't block on it.
 echo "Yes" | .venv/bin/python -c "import isaaclab"
 
-echo "Done. Verify with: isaacsim"
+echo "Done. Verify with: .venv/bin/isaacsim (or 'isaacsim' after 'source .venv/bin/activate')"
