@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install the VLA env (vla/.venv) and OmniVLA checkpoints, versions from vla/uv.lock
 # Usage: ./scripts/install_vla.sh [--full]
-#   --full also downloads the 7B checkpoint (~16GB)
+#   --full also downloads the full 7B checkpoint (~16GB), for python -m vla --model full
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

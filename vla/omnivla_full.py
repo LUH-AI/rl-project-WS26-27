@@ -1,4 +1,4 @@
-"""OmniVLA 7B, run with python -m vla.omnivla_7b."""
+"""OmniVLA full (7B) model, run with python -m vla."""
 
 from __future__ import annotations
 
@@ -9,12 +9,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from vla.node import (
-    OMNIVLA_DIR,
-    WAYPOINT_SCALE,
-    get_parser,
-    run_node,
-)
+from vla.node import OMNIVLA_DIR, WAYPOINT_SCALE
 
 sys.path[:0] = [OMNIVLA_DIR, os.path.join(OMNIVLA_DIR, "inference")]
 
@@ -29,7 +24,7 @@ from prismatic.vla.constants import ACTION_DIM, NUM_ACTIONS_CHUNK  # noqa: E402
 LANGUAGE_GOAL = 7
 
 
-class OmniVLA7B:
+class OmniVLAFull:
     def __init__(self, prompt: str):
         cfg = upstream.InferenceConfig()
         cfg.vla_path = os.path.join(OMNIVLA_DIR, "omnivla-original")
@@ -110,16 +105,3 @@ class OmniVLA7B:
         waypoints[:, :2] *= WAYPOINT_SCALE
         return waypoints
 
-
-def main() -> None:
-    args = get_parser().parse_args()
-    if not torch.cuda.is_available():
-        sys.exit("OmniVLA 7B needs a CUDA GPU.")
-    print(f"Loading OmniVLA 7B, prompt={args.prompt!r}")
-    vla = OmniVLA7B(args.prompt)
-    print(f"OmniVLA 7B on {vla.device}, prompt={args.prompt!r}", flush=True)
-    run_node(vla, args)
-
-
-if __name__ == "__main__":
-    main()
