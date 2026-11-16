@@ -28,6 +28,19 @@ Each venv's versions are pinned in its `pyproject.toml` and `uv.lock` (root, `de
 ./scripts/install_isaaclab.sh      # optional, .venv: Isaac Lab + unitree_rl_lab, only for training (step 2)
 ```
 
+Shared workstation: `/tmp` is shared by all accounts, and some tools write to fixed paths there.
+The first user to create one owns it, and everyone else gets `PermissionError: [Errno 13]`.
+* Isaac Lab writes its log to `$TMPDIR/isaaclab/logs` (default `/tmp`). Before training, point `TMPDIR` at a folder only you can read
+  (add the `export` line to `~/.bashrc` to keep it):
+  ```bash
+  mkdir -p -m 700 ~/tmp   # once
+  export TMPDIR=~/tmp
+  ```
+* The Go2 URDF is converted to USD in `$TMPDIR/IsaacLab_$USER/go2_usd`. `install_isaaclab.sh` sets this up.
+  If training fails on `/tmp/IsaacLab`, run the install script again.
+* The robot SDK writes its DDS log to `/tmp/cdds.LOG`. See [deploy/real_robot_setup.md](deploy/real_robot_setup.md#setup-notes) for the fix.
+* The command bus uses the fixed local UDP ports 15555 and 15556 (`command_bus/`), so only one user at a time can run step 3.
+
 ### 0. Connect to the robot
 
 Find the Ethernet interface connected to the robot with `ip -br link` (here `enxf8e43b9f046a`).
